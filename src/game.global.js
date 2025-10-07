@@ -10,7 +10,7 @@
   const W=960, H=540, FIXED_DT=1/60, TAU=Math.PI*2;
   const ENEMY_ACCEL=600, ENEMY_TURN=6.0;        // 회전·가속 제한
   const SEP_RANGE=24, SEP_K=1200;               // 적-적 분리 강도
-  const MAG_R=120, MAG_ACC=600, MAG_MAX=220;    // 드랍 마그넷
+  const MAG_R=30, MAG_ACC=10000, MAG_MAX=5000;    // 드랍 마그넷
 
   // 스폰·난이도(간단형)
   const DIFF={
