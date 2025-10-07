@@ -91,9 +91,8 @@
     bullets.each(o=>{ o.x+=o.vx*dt; o.y+=o.vy*dt; o.life-=dt; if(o.x<-20||o.x>W+20||o.y<-20||o.y>H+20||o.life<=0) bullets.release(o); });
   }
 
-  // enemySystem 관련 부분
   function enemySystem(dt){
-    // enemySpawn 주기 설정
+    // simple spawner scaling with time
     if(state.time<600){
       // every 0.6s spawn small pack
       if(((state.time*10)|0)!==(((state.time-dt)*10)|0)) {
@@ -101,12 +100,19 @@
         for(let i=0;i<n;i++) spawnEnemy();
       }
     }
-    // enemy에 대한 player 추격 로직
     enemies.each(e=>{
       e.t+=dt; // orbit move
       const sp = 40 + Math.min(140, state.time*0.8);
       const dx = player.x - e.x, dy = player.y - e.y; const L=Math.hypot(dx,dy)||1;
       e.vx = dx/L*sp; e.vy = dy/L*sp; e.x+=e.vx*dt; e.y+=e.vy*dt;
+      // fire spiral
+      if(((e.t*4)|0)!==(((e.t-dt)*4)|0)){
+        const k=6; const base = e.t*TAU*0.13;
+        for(let j=0;j<k;j++){
+          const a = base + j*(TAU/k);
+          bullets.spawn(b=>{ b.x=e.x; b.y=e.y; b.vx=Math.cos(a)*120; b.vy=Math.sin(a)*120; b.life=3; b.team=1; b.r=3; });
+        }
+      }
     });
   }
 
@@ -134,24 +140,10 @@
         }
       }
     });
-    // enemy contact damage
-    let touched = false;
-    enemies.each(e=>{
-      const dx = player.x - e.x, dy = player.y - e.y;
-      const rr = player.r + e.r;
-      if (dx*dx + dy*dy <= rr*rr) {
-        touched = true;
-        // 선택: 약한 밀어내기
-        const L = Math.hypot(dx,dy)||1;
-        const push = 60; // 가벼운 반발
-        player.x += (dx/L) * (push*FIXED_DT);
-        player.y += (dy/L) * (push*FIXED_DT);
-      }
+    // enemy bullets vs player
+    bullets.each(b=>{
+      if(b.team!==1) return; const dx=player.x-b.x, dy=player.y-b.y; const rr=player.r+b.r; if(dx*dx+dy*dy<=rr*rr){ if(player.ifr<=0){ player.hp--; player.ifr=0.6; } bullets.release(b); }
     });
-    if (touched && player.ifr<=0) {
-      player.hp--; 
-      player.ifr = 0.6; // 무적 프레임
-    }
     // drops vs player
     drops.each(d=>{ const dx=player.x-d.x, dy=player.y-d.y; const rr=player.r+d.r; if(dx*dx+dy*dy<=rr*rr){ drops.release(d); state.xp++; if(state.xp>=state.nextLvl){ state.xp=0; state.lvl++; state.nextLvl = Math.floor(state.nextLvl*1.25); /* TODO: 레벨업 선택 UI */ } }
     });

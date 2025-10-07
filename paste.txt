@@ -443,14 +443,175 @@ DropRate = clamp(minDrop + d/(1+e*t), minDrop, maxDrop)
 
 # 다음 단계 체크리스트
 
-* [ ] 레벨업 **3중 선택 UI** 구현 및 태그/시너지 시스템 연결
+* [x] 레벨업 **3중 선택 UI** 구현 및 태그/시너지 시스템 연결(아래 패치 포함)
+* [x] 드랍 **마그넷 흡입**(플레이어 반경 내 가속) 추가(아래 패치 포함)
 * [ ] 적 아키타입(돌진, 회전, 소환, 레이저) 4종과 보스 1종
 * [ ] 탄 패턴 모듈화: `emitCircle(n,speed,spread)`, `emitSpiral(rate,accel)` 등
 * [ ] 무적 프레임 시각 피드백, 피격 화면 셰이크
-* [ ] 드랍 **마그넷 흡입**(플레이어 반경 내 가속)
 * [ ] 웨이브 타이머와 엘리트/보스 스케줄러
 * [ ] 세이브: 언락, 옵션, 시드 기록. Export/Import UI 개선
 * [ ] 성능: 쿼드트리 파라미터 튜닝, 풀 사이즈 상향, 드로우 배치 최적화
+
+---
+
+# 레벨업 3중 선택 UI + 마그넷 흡입 — 패치
+
+## 1) index.html 수정
+
+`<div id="ui">` 아래에 선택 오버레이를 추가합니다.
+
+```html
+<div id="levelup" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)">
+  <div style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:16px;min-width:480px">
+    <h3 style="margin-top:0">레벨 업! 하나를 선택하세요</h3>
+    <div id="choices" style="display:grid;gap:8px"></div>
+  </div>
+</div>
+```
+
+## 2) src/game.global.js 수정
+
+아래 변경을 순서대로 반영하세요.
+
+### a) 상태와 아이템 DB 추가
+
+`// ====== State ======` 위쪽 어딘가에 추가:
+
+```js
+// ====== Items & Synergy (간단 버전)
+const ITEMS=[
+  {id:'atk1', name:'공격력 +1', tags:['공격'], mods:[{stat:'dmg', add:1}]},
+  {id:'atk_spd', name:'연사속도 +15%', tags:['연사'], mods:[{stat:'fireRate', mul:0.85}]},
+  {id:'pierce', name:'관통 +1', tags:['관통'], mods:[{stat:'pierce', add:1}]},
+  {id:'move', name:'이동속도 +10%', tags:['이동'], mods:[{stat:'speed', mul:1.10}]},
+  {id:'hp', name:'최대 HP +1', tags:['생존'], mods:[{stat:'maxHp', add:1}]},
+];
+```
+
+### b) 플레이어에 연사속도, 선택/보유 목록, 일시정지 플래그 추가
+
+플레이어 선언을 다음처럼 확장:
+
+```js
+const player = {x:W/2,y:H/2,r:10,hp:5,maxHp:5, ifr:0, fireCD:0, fireRate:0.12, speed:210, dmg:1, pierce:0};
+const meta = { inventory:[], tags:new Set() };
+```
+
+상태에 `paused:false`를 추가:
+
+```js
+const state = { seed: Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10, alive:true, score:0, paused:false };
+```
+
+### c) 입력과 발사 간격에서 `player.fireRate` 사용
+
+`inputSystem`에서 발사 부분을 다음처럼 수정:
+
+```js
+player.fireCD -= dt;
+if(Input.m && !state.paused && player.fireCD<=0){
+  const dx = Input.mx - player.x, dy = Input.my - player.y; const L = Math.hypot(dx,dy)||1; const sp=420;
+  bullets.spawn(o=>{ o.x=player.x; o.y=player.y; o.vx=dx/L*sp; o.vy=dy/L*sp; o.life=1.4; o.team=0; o.pierce=player.pierce; o.dmg=player.dmg; });
+  player.fireCD = player.fireRate;
+}
+```
+
+또한 이동 계산 앞에 `if(state.paused) return;`를 넣어 선택창이 열리면 정지되게 합니다.
+
+### d) 레벨업 트리거에서 선택창 띄우기
+
+`collisionSystem()`의 드랍 픽업 처리 부분을 아래처럼 변경:
+
+```js
+// drops vs player
+drops.each(d=>{ const dx=player.x-d.x, dy=player.y-d.y; const rr=player.r+d.r; if(dx*dx+dy*dy<=rr*rr){
+  drops.release(d); state.xp++;
+  if(state.xp>=state.nextLvl){ state.xp=0; state.lvl++; state.nextLvl = Math.floor(state.nextLvl*1.25); openLevelUp(); }
+}});
+```
+
+### e) 레벨업 UI 로직 추가
+
+파일 상단 쪽에 다음 유틸과 UI 연결을 추가합니다.
+
+```js
+const $ = (sel)=>document.querySelector(sel);
+function rollChoices(){
+  // 시드 고정 무작위: 레벨과 런 시드로 결정
+  const r = XorShift32(state.seed ^ (state.lvl*0x9e3779b9));
+  const pool=[...ITEMS];
+  const out=[];
+  for(let i=0;i<3 && pool.length;i++){
+    const idx = (pool.length*r()|0);
+    out.push(pool.splice(idx,1)[0]);
+  }
+  return out;
+}
+function applyItem(item){
+  meta.inventory.push(item.id);
+  item.tags.forEach?.(t=>meta.tags.add(t));
+  for(const m of item.mods){
+    if(m.stat==='dmg' && m.add) player.dmg += m.add;
+    if(m.stat==='pierce' && m.add) player.pierce += m.add;
+    if(m.stat==='maxHp' && m.add){ player.maxHp += m.add; player.hp += m.add; }
+    if(m.stat==='speed' && m.mul) player.speed = Math.floor(player.speed*m.mul);
+    if(m.stat==='fireRate' && m.mul) player.fireRate *= m.mul;
+  }
+}
+function openLevelUp(){
+  state.paused=true;
+  const choices = rollChoices();
+  const wrap = $('#choices'); wrap.innerHTML='';
+  for(const c of choices){
+    const btn=document.createElement('button');
+    btn.textContent = c.name;
+    btn.style.cssText = 'text-align:left;padding:10px;border-radius:10px;background:#1b2330;color:#e5ecf6;border:1px solid #31415a';
+    btn.onclick=()=>{ applyItem(c); closeLevelUp(); };
+    wrap.appendChild(btn);
+  }
+  $('#levelup').style.display='flex';
+}
+function closeLevelUp(){ $('#levelup').style.display='none'; state.paused=false; }
+```
+
+### f) 마그넷 흡입 추가
+
+`cleanupSystem()`에서 드랍 중력 업데이트 전에 **흡입 가속**을 적용합니다.
+
+```js
+// magnet
+const MAG_R = 120; // 흡입 시작 반경
+const MAG_ACC = 600; // 가속도
+const MAG_MAX = 220; // 최대 속도
+
+drops.each(d=>{
+  // magnet attraction
+  const dx = player.x-d.x, dy = player.y-d.y; const dist = Math.hypot(dx,dy);
+  if(dist < MAG_R){
+    const ax = (dx/dist)*MAG_ACC*FIXED_DT; const ay = (dy/dist)*MAG_ACC*FIXED_DT;
+    d.vx = Math.max(Math.min(d.vx+ax, MAG_MAX), -MAG_MAX);
+    d.vy = Math.max(Math.min(d.vy+ay, MAG_MAX), -MAG_MAX);
+  }
+  d.vy += 30*FIXED_DT; d.x+=d.vx*FIXED_DT; d.y+=d.vy*FIXED_DT; if(d.y>H+20) drops.release(d);
+});
+```
+
+### g) 런 리셋 시 상태 초기화 확장
+
+`resetRun()` 마지막에 다음을 추가:
+
+```js
+state.paused=false; meta.inventory.length=0; meta.tags.clear(); player.fireRate=0.12; player.dmg=1; player.pierce=0; player.speed=210; player.maxHp=5; player.hp=5;
+```
+
+> 참고: 위 패치는 현재 코드 구조를 크게 바꾸지 않으면서 선택 UI와 성장 체감을 빠르게 넣는 최소 변경입니다. 이후 정식 시너지 시스템은 `tags` 조합에 따라 특수 효과(예: 관통 시 전기 사슬) 트리거를 추가하는 방식으로 확장하세요.
+
+---
+
+# 디버그 팁 (추가)
+
+* 레벨업 강제 테스트: 콘솔에서 `Game.state.xp = Game.state.nextLvl-1;` 후 드랍 1개 먹기.
+* 연사속도 최소 한계 설정이 필요하면 `player.fireRate = Math.max(0.05, player.fireRate*0.85);`처럼 클램프 적용.
 
 ---
 
