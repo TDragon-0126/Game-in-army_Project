@@ -182,9 +182,7 @@
           if(e.hp<=0){
             enemies.release(e);
             state.score += 10;
-            drops.spawn(d=>{
-              d.x=e.x; d.y=e.y; d.vx=RNG.range(state.r,-20,20); d.vy=RNG.range(state.r,-30,-10); d.kind='xp';
-            });
+            drops.spawn(d=>{ d.x=e.x; d.y=e.y; d.vx=0; d.vy=0; d.kind='xp'; });
           }
           break;
         }
@@ -196,8 +194,26 @@
   }
 
   function cleanupSystem(){
-    drops.each(d=>{ d.vy += 30*FIXED_DT; d.x+=d.vx*FIXED_DT; d.y+=d.vy*FIXED_DT; if(d.y>H+20) drops.release(d); });
-    if(player.hp<=0) state.alive=false;
+    // --- Drops update: 고정 + 자기장 흡입만 ---
+    const MAG_R = 120;      // 흡입 시작 반경
+    const MAG_ACC = 600;    // 가속도
+    const MAG_MAX = 220;    // 최대 속도
+
+    drops.each(d=>{
+      const dx = player.x - d.x, dy = player.y - d.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < MAG_R) {
+        // 반경 안에서만 끌림
+        const ax = (dx / (dist || 1)) * MAG_ACC * FIXED_DT;
+        const ay = (dy / (dist || 1)) * MAG_ACC * FIXED_DT;
+        d.vx = Math.max(Math.min(d.vx + ax, MAG_MAX), -MAG_MAX);
+        d.vy = Math.max(Math.min(d.vy + ay, MAG_MAX), -MAG_MAX);
+        d.x += d.vx * FIXED_DT;
+        d.y += d.vy * FIXED_DT;
+      }
+      // dist ≥ MAG_R이면 아무 것도 하지 않음 → 그 자리 고정
+    });
   }
 
   // ====== Render ======
