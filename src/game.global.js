@@ -56,7 +56,7 @@
 
   // ====== Entities ======
   const bullets = makePool(()=>({type:'b',alive:false,x:0,y:0,vx:0,vy:0,r:3,life:0,team:1,pierce:0, dmg:1}), 4000);
-  const enemies = makePool(()=>({type:'e',alive:false,x:0,y:0,vx:0,vy:0,r:12,hp:3,maxHp:3, slowMul:1, slowTimer:0, hitTimer:0}), 800);
+  const enemies = makePool(()=>({type:'e',alive:false,x:0,y:0,vx:0,vy:0,r:12,hp:3,maxHp:3, slowMul:1, slowTimer:0, t:0}), 800);
   const drops   = makePool(()=>({type:'d',alive:false,x:0,y:0,vx:0,vy:0,r:6,kind:'xp'}), 400);
   const player = {x:W/2,y:H/2,r:10,hp:5,maxHp:5, ifr:0, fireCD:0, speed:210, dmg:1, pierce:0};
 
