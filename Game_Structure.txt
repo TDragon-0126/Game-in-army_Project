@@ -2,4 +2,3 @@
   index.html
   /src
     game.global.js
-    assets
