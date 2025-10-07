@@ -56,7 +56,7 @@
 
   // ====== Entities ======
   const bullets = makePool(()=>({type:'b',alive:false,x:0,y:0,vx:0,vy:0,r:3,life:0,team:1,pierce:0, dmg:1}), 4000);
-  const enemies = makePool(()=>({type:'e',alive:false,x:0,y:0,vx:0,vy:0,r:12,hp:3,maxHp:3,t:0}), 800);
+  const enemies = makePool(()=>({type:'e',alive:false,x:0,y:0,vx:0,vy:0,r:12,hp:3,maxHp:3, slowMul:1, slowTimer:0, t:0}), 800);
   const drops   = makePool(()=>({type:'d',alive:false,x:0,y:0,vx:0,vy:0,r:6,kind:'xp'}), 400);
   const player = {x:W/2,y:H/2,r:10,hp:5,maxHp:5, ifr:0, fireCD:0, speed:210, dmg:1, pierce:0};
 
@@ -104,7 +104,8 @@
     // enemy에 대한 player 추격 로직
     enemies.each(e=>{
       e.t+=dt; // orbit move
-      const sp = 40 + Math.min(140, state.time*0.8);
+      const baseSp = 40 + Math.min(140, state.time*0.8);
+      const sp = baseSp * e.slowMul;
       const dx = player.x - e.x, dy = player.y - e.y; const L=Math.hypot(dx,dy)||1;
       e.vx = dx/L*sp; e.vy = dy/L*sp; e.x+=e.vx*dt; e.y+=e.vy*dt;
     });
@@ -114,7 +115,7 @@
     const side = RNG.int(state.r,0,3);
     let x=0,y=0; if(side===0){x=RNG.range(state.r,0,W); y=-16;}else if(side===1){x=W+16; y=RNG.range(state.r,0,H);}else if(side===2){x=RNG.range(state.r,0,W); y=H+16;}else{ x=-16; y=RNG.range(state.r,0,H);}
     const hp = 3 + ((state.time/30)|0);
-    enemies.spawn(e=>{ e.x=x; e.y=y; e.hp=hp; e.maxHp=hp; e.t=0; });
+    enemies.spawn(e=>{ e.x=x; e.y=y; e.hp=hp; e.maxHp=hp; e.t=0; e.slowMul=1; e.slowTimer=0; });
   }
 
   // ====== Collision (Quadtree) ======
@@ -152,6 +153,35 @@
       player.hp--; 
       player.ifr = 0.6; // 무적 프레임
     }
+    // bullets vs enemies
+    bullets.each(b=>{
+      if(b.team!==0) return;
+      const range = {x:b.x-16,y:b.y-16,w:32,h:32};
+      const cand=[]; qt.query(range,cand);
+      for(const e of cand){
+        const dx=e.x-b.x, dy=e.y-b.y; const rr=(e.r+b.r);
+        if(dx*dx+dy*dy <= rr*rr){
+          // 피해
+          e.hp -= b.dmg;
+          // 둔화 부여: 0.25s 동안 속도 0.8배
+          e.slowMul = 0.8; 
+          e.slowTimer = 0.25;
+
+          // 관통 처리
+          if(b.pierce>0){ b.pierce--; } else { bullets.release(b); }
+
+          // 사망 처리
+          if(e.hp<=0){
+            enemies.release(e);
+            state.score += 10;
+            drops.spawn(d=>{
+              d.x=e.x; d.y=e.y; d.vx=RNG.range(state.r,-20,20); d.vy=RNG.range(state.r,-30,-10); d.kind='xp';
+            });
+          }
+          break;
+        }
+      }
+    });
     // drops vs player
     drops.each(d=>{ const dx=player.x-d.x, dy=player.y-d.y; const rr=player.r+d.r; if(dx*dx+dy*dy<=rr*rr){ drops.release(d); state.xp++; if(state.xp>=state.nextLvl){ state.xp=0; state.lvl++; state.nextLvl = Math.floor(state.nextLvl*1.25); /* TODO: 레벨업 선택 UI */ } }
     });
@@ -176,7 +206,7 @@
     // bullets
     ctx.fillStyle='#fda4af'; bullets.each(b=>{ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill(); });
     // enemies
-    ctx.fillStyle='#a7f3d0'; enemies.each(e=>{ ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,TAU); ctx.fill(); });
+    ctx.fillStyle='#a7f3d0'; enemies.each(e=>{ if(e.slowTimer>0) ctx.fillStyle='#86efac'; else ctx.fillStyle='#a7f3d0'; ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,TAU); ctx.fill(); });
     // player
     if(player.ifr>0) ctx.globalAlpha=0.5; ctx.fillStyle='#fef3c7'; ctx.beginPath(); ctx.arc(player.x,player.y,player.r,0,TAU); ctx.fill(); ctx.globalAlpha=1;
 
