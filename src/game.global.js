@@ -279,6 +279,16 @@
     for(let y=0;y<=H;y+=30){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
     ctx.globalAlpha=1;
 
+    // 화면 셰이크 오프셋 계산
+    if(state.shakeT>0){
+      state.shakeT -= 1/60;
+      const k = state.shakeT>0 ? state.shakeT : 0;
+      const s = state.shakeAmp * k*k; // 감쇠
+      const ox = (Math.random()*2-1)*s;
+      const oy = (Math.random()*2-1)*s;
+      ctx.save(); ctx.translate(ox, oy);
+    }
+
     // drops
     ctx.fillStyle='#7dd3fc'; drops.each(d=>{ ctx.beginPath(); ctx.arc(d.x,d.y,d.r,0,TAU); ctx.fill(); });
     // bullets
@@ -295,6 +305,11 @@
     // HUD
     const hud = document.getElementById('hud');
     hud.textContent = `seed:${state.seed} time:${state.time.toFixed(1)} ents(b/e/d):${bullets.raw.length-bullets.free.length}/${enemies.raw.length-enemies.free.length}/${drops.raw.length-drops.free.length}`;
+  
+    // 셰이크 종료
+    if(state.shakeT<=0){} else { /* nothing */ }
+    if(state.shakeT>0){ ctx.restore(); }
+  
   }
 
   // ====== Main loop ======
