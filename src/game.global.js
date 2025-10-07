@@ -2,6 +2,12 @@
   const Game = window.Game = {};
   // ====== Config ======
   const W=960,H=540,FIXED_DT=1/60;
+  const MAX_ENEMIES        = 60;   // 동시 적 상한
+  const SPAWN_BASE_COOLDOWN= 1.2;  // 기본 스폰 주기(초) 1.2s
+  const SPAWN_MIN_COOLDOWN = 0.6;  // 최소 주기(난이도 상승 시 하한)
+  const SPAWN_PACK_BASE    = 2;    // 한 번에 스폰 수 시작값
+  const SPAWN_PACK_PER_MIN = 1;    // 분당 스폰 수 증가량
+  const SPAWN_GRACE_TIME   = 3.0;
 
   // ====== RNG ======
   function XorShift32(seed){ let x = seed|0 || 123456789; return function(){ x^=x<<13; x^=x>>>17; x^=x<<5; return (x>>>0)/4294967296; }; }
@@ -61,7 +67,7 @@
   const player = {x:W/2,y:H/2,r:10,hp:5,maxHp:5, ifr:0, fireCD:0, speed:210, dmg:1, pierce:0};
 
   // ====== State ======
-  const state = { seed: Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10, alive:true, score:0 };
+  const state = { seed: Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10, alive:true, score:0, spawnCD: 0 };
   state.r = XorShift32(state.seed);
 
   // ====== Systems ======
@@ -93,14 +99,28 @@
 
   // enemySystem 관련 부분
   function enemySystem(dt){
-    // enemySpawn 주기 설정
-    if(state.time<600){
-      // every 0.6s spawn small pack
-      if(((state.time*10)|0)!==(((state.time-dt)*10)|0)) {
-        const n = 3 + ((state.time/20)|0);
-        for(let i=0;i<n;i++) spawnEnemy();
-      }
+    // ---- Spawn Scheduler ----
+  state.spawnCD -= dt;
+
+  // 동시 적 수 체크
+  const activeEnemies = enemies.raw.length - enemies.free.length;
+  if (activeEnemies < MAX_ENEMIES && state.time > SPAWN_GRACE_TIME && state.spawnCD <= 0){
+    // 경과 시간 기반 난이도 스케일
+    const minutes = Math.floor(state.time / 60);
+
+    // 한 번에 스폰 수 = 기본 + 분당 증가
+    const pack = Math.min(5, SPAWN_PACK_BASE + SPAWN_PACK_PER_MIN * minutes); // 상한 5
+
+    // 스폰 실행
+    for(let i=0;i<pack;i++){
+      if (enemies.free.length === 0) break; // 풀 고갈 보호
+      spawnEnemy();
     }
+
+    // 다음 스폰까지의 쿨다운: 시간이 지날수록 조금 빨라짐
+    const cd = Math.max(SPAWN_MIN_COOLDOWN, SPAWN_BASE_COOLDOWN - minutes * 0.1);
+    state.spawnCD = cd;
+  }
     // enemy에 대한 player 추격 로직
     enemies.each(e=>{
       e.t+=dt; // orbit move
@@ -227,6 +247,7 @@
   player.hp=player.maxHp;
 
   bullets.reset(); enemies.reset(); drops.reset();
+  state.spawnCD = SPAWN_BASE_COOLDOWN;
 }
 
   // autostart preview
