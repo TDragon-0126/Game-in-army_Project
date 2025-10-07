@@ -71,8 +71,10 @@
   const player = {x:W/2,y:H/2,r:10,hp:5,maxHp:5, ifr:0, fireCD:0, speed:210, dmg:1, pierce:0};
 
   // ====== State ======
-  const state = { seed: Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10, alive:true, score:0, spawnCD: 0 };
+  const state = { seed: Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10, alive:true, score:0, spawnCD: 0, shakeT:0, shakeAmp:0 };
   state.r = XorShift32(state.seed);
+
+  function addShake(t=0.15, amp=6){ state.shakeT=Math.max(state.shakeT,t); state.shakeAmp=Math.max(state.shakeAmp,amp); }
 
   // ====== Systems ======
   function update(dt){
@@ -207,7 +209,8 @@
     });
     if (touched && player.ifr<=0) {
       player.hp--; 
-      player.ifr = 0.6; // 무적 프레임
+      player.ifr = 1; // 무적 프레임
+      addShake(0.2, 8);
     }
     // bullets vs enemies
     bullets.each(b=>{
@@ -230,6 +233,7 @@
           if(e.hp<=0){
             enemies.release(e);
             state.score += 10;
+            addShake(0.1, 4); 
             drops.spawn(d=>{ d.x=e.x; d.y=e.y; d.vx=0; d.vy=0; d.kind='xp'; });
           }
           break;
