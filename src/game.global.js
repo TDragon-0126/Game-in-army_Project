@@ -196,8 +196,8 @@
   function cleanupSystem(){
     // --- Drops update: 고정 + 자기장 흡입만 ---
     const MAG_R = 30;      // 흡입 시작 반경
-    const MAG_ACC = 1200;    // 가속도
-    const MAG_MAX = 600;    // 최대 속도
+    const MAG_ACC = 10000;    // 가속도
+    const MAG_MAX = 2000;    // 최대 속도
 
     drops.each(d=>{
       const dx = player.x - d.x, dy = player.y - d.y;
