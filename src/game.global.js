@@ -130,7 +130,8 @@
       if (e.slowTimer > 0){ e.slowTimer -= dt; if (e.slowTimer <= 0) e.slowMul = 1; }
       if (e.hitTimer  > 0){ e.hitTimer  -= dt; }
 
-      const sp = enemySpeedNow() * e.slowMul;                  // 목표 속도
+      const baseSp = 70 + Math.min(110, state.time*0.8);
+      const sp = baseSp * e.slowMul;  // 목표 속도
       const dx = player.x - e.x, dy = player.y - e.y;
       const L = Math.hypot(dx,dy)||1;
       const vxTarget = dx/L * sp, vyTarget = dy/L * sp;
