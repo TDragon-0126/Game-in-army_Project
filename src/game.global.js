@@ -56,7 +56,7 @@
 
   // ====== Entities ======
   const bullets = makePool(()=>({type:'b',alive:false,x:0,y:0,vx:0,vy:0,r:3,life:0,team:1,pierce:0, dmg:1}), 4000);
-  const enemies = makePool(()=>({type:'e',alive:false,x:0,y:0,vx:0,vy:0,r:12,hp:3,maxHp:3, slowMul:1, slowTimer:0, t:0}), 800);
+  const enemies = makePool(()=>({type:'e',alive:false,x:0,y:0,vx:0,vy:0,r:12,hp:3,maxHp:3, slowMul:1, slowTimer:0, hitTimer:0}), 800);
   const drops   = makePool(()=>({type:'d',alive:false,x:0,y:0,vx:0,vy:0,r:6,kind:'xp'}), 400);
   const player = {x:W/2,y:H/2,r:10,hp:5,maxHp:5, ifr:0, fireCD:0, speed:210, dmg:1, pierce:0};
 
@@ -123,18 +123,6 @@
   function collisionSystem(){
     qt.clear();
     enemies.each(e=>qt.insert(e));
-    // bullets vs enemies
-    bullets.each(b=>{
-      if(b.team!==0) return;
-      const range = {x:b.x-16,y:b.y-16,w:32,h:32};
-      const cand=[]; qt.query(range,cand);
-      for(const e of cand){
-        const dx=e.x-b.x, dy=e.y-b.y; const rr=(e.r+b.r); if(dx*dx+dy*dy <= rr*rr){
-          e.hp -= b.dmg; if(b.pierce>0){ b.pierce--; } else { bullets.release(b); break; }
-          if(e.hp<=0){ enemies.release(e); state.score+=10; drops.spawn(d=>{ d.x=e.x; d.y=e.y; d.vx=RNG.range(state.r,-20,20); d.vy=RNG.range(state.r,-30,-10); d.kind='xp'; }); }
-        }
-      }
-    });
     // enemy contact damage
     let touched = false;
     enemies.each(e=>{
