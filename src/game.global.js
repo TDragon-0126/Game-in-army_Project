@@ -8,6 +8,9 @@
   const SPAWN_PACK_BASE    = 2;    // 한 번에 스폰 수 시작값
   const SPAWN_PACK_PER_MIN = 1;    // 분당 스폰 수 증가량
   const SPAWN_GRACE_TIME   = 3.0;
+  const ENEMY_ACCEL = 600;
+  const SEP_PAD = 2;          // 약간의 겹침 허용
+  const SEP_ITER_AABB = 24;   // 이 범위 안만 이웃 검사
 
   // ====== RNG ======
   function XorShift32(seed){ let x = seed|0 || 123456789; return function(){ x^=x<<13; x^=x>>>17; x^=x<<5; return (x>>>0)/4294967296; }; }
@@ -123,12 +126,44 @@
   }
     // enemy에 대한 player 추격 로직
     enemies.each(e=>{
-      e.t+=dt; // orbit move
-      const baseSp = 40 + Math.min(140, state.time*0.8);
-      const sp = baseSp * e.slowMul;
-      const dx = player.x - e.x, dy = player.y - e.y; const L=Math.hypot(dx,dy)||1;
-      e.vx = dx/L*sp; e.vy = dy/L*sp; e.x+=e.vx*dt; e.y+=e.vy*dt;
+      e.t += dt;
+      if (e.slowTimer > 0){ e.slowTimer -= dt; if (e.slowTimer <= 0) e.slowMul = 1; }
+      if (e.hitTimer  > 0){ e.hitTimer  -= dt; }
+
+      const sp = enemySpeedNow() * e.slowMul;                  // 목표 속도
+      const dx = player.x - e.x, dy = player.y - e.y;
+      const L = Math.hypot(dx,dy)||1;
+      const vxTarget = dx/L * sp, vyTarget = dy/L * sp;
+
+      // 가속 한계로 목표속도에 수렴
+      const ax = Math.max(Math.min(vxTarget - e.vx, ENEMY_ACCEL*dt), -ENEMY_ACCEL*dt);
+      const ay = Math.max(Math.min(vyTarget - e.vy, ENEMY_ACCEL*dt), -ENEMY_ACCEL*dt);
+      e.vx += ax; e.vy += ay;
+
+      // 속도 캡(수학적 최대 sp 유지)
+      const vL = Math.hypot(e.vx,e.vy);
+      if (vL > sp){ e.vx = e.vx/vL * sp; e.vy = e.vy/vL * sp; }
+
+      e.x += e.vx * dt; e.y += e.vy * dt;
     });
+    qt.clear();
+    enemies.each(e=>qt.insert(e))
+    enemies.each(e=>{
+      const cand = [];
+      qt.query({x:e.x-SEP_ITER_AABB, y:e.y-SEP_ITER_AABB, w:SEP_ITER_AABB*2, h:SEP_ITER_AABB*2}, cand);
+      for(const n of cand){
+        if(n===e) continue;
+        const dx = e.x - n.x, dy = e.y - n.y;
+        const dist = Math.hypot(dx,dy);
+        const minDist = (e.r + n.r) - SEP_PAD;   // 목표 최소거리
+        if(dist>0 && dist < minDist){
+          const push = (minDist - dist) * 0.5;   // 반반 분배
+          const nx = dx/dist, ny = dy/dist;
+          e.x += nx * push; e.y += ny * push;
+          n.x -= nx * push; n.y -= ny * push;
+        }
+      }
+    })
   }
 
   function spawnEnemy(){
