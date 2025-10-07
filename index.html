@@ -2,92 +2,24 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Roguelite Bullet Hell — Canvas 2D 템플릿</title>
+  <title>== 로그라이트 게임개발 ==</title>
   <style>
-    html, body { height: 100%; margin: 0; background: #0b0b0f; color: #e5e7eb; }
-    #wrap { height: 100%; display: grid; place-items: center; }
-    canvas { background: #0b0b0f; display: block; image-rendering: pixelated; }
-    .hud { position: fixed; left: 12px; top: 10px; font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: #cbd5e1; }
+    html,body{margin:0;background:#0b0e13;color:#d0d6e0;font:14px/1.4 system-ui}
+    #ui{position:fixed;left:8px;top:8px}
+    #hud{position:fixed;left:8px;bottom:8px;opacity:.8}
+    canvas{display:block;margin:0 auto; background:#10141c; image-rendering:pixelated}
+    button{background:#1b2330;color:#e5ecf6;border:1px solid #31415a;border-radius:8px;padding:6px 10px}
   </style>
 </head>
 <body>
-  <div id="wrap">
-    <canvas id="game" width="960" height="540"></canvas>
+  <div id="ui">
+    <button id="btnStart">게임 시작</button>
+    <button id="btnExport">내보내기</button>
+    <button id="btnImport">불러오기</button>
+    <span id="info"></span>
   </div>
-  <div class="hud" id="hud"></div>
-  <!-- 파일 프로토콜에서도 동작하도록 import 없이 단일 스크립트로 구성 -->
-  <script>
-  (function(){
-    const TAU=Math.PI*2; const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-    function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let x=Math.imul(t^(t>>>15),1|t); x^=x+Math.imul(x^(x>>>7),61|x); return ((x^(x>>>14))>>>0)/4294967296; }; }
-    const randRange=(rng,a,b)=>a+rng()*(b-a);
-    const dist2=(ax,ay,bx,by)=>{const dx=ax-bx,dy=ay-by;return dx*dx+dy*dy;};
-
-    function setupInput(canvas){
-      const s={keys:{},mouse:{x:0,y:0,down:false}};
-      addEventListener('keydown',e=>s.keys[e.code]=true);
-      addEventListener('keyup',e=>s.keys[e.code]=false);
-      canvas.addEventListener('mousedown',()=>{s.mouse.down=true; canvas.requestPointerLock?.();});
-      addEventListener('mouseup',()=>{s.mouse.down=false; document.exitPointerLock?.();});
-      canvas.addEventListener('mousemove',e=>{ const r=canvas.getBoundingClientRect(); const dpr=window.devicePixelRatio||1; s.mouse.x=(e.clientX-r.left)*(canvas.width/r.width)/dpr; s.mouse.y=(e.clientY-r.top)*(canvas.height/r.height)/dpr;});
-      return s;
-    }
-
-    function makePool(n,factory){ const arr=Array.from({length:n},factory); const dead=arr.slice();
-      function spawn(init){ if(!dead.length) return null; const e=dead.pop(); init(e); e.alive=true; return e; }
-      function kill(e){ if(!e.alive) return; e.alive=false; dead.push(e);} return {arr,dead,spawn,kill}; }
-
-    class QuadTree{ constructor(bounds,cap=8,depth=0,maxDepth=6){ Object.assign(this,{bounds,cap,depth,maxDepth,pts:[],div:null}); }
-      insert(o){ if(!intersects(this.bounds,o)) return false; if(this.pts.length<this.cap||this.depth>=this.maxDepth){ this.pts.push(o); return true; }
-        if(!this.div) this.subdivide(); for(const q of this.div){ if(q.insert(o)) return true; } return false; }
-      query(range,out){ if(!intersects(this.bounds,range)) return out; for(const p of this.pts){ if(intersects(range,p)) out.push(p);} if(this.div){ for(const q of this.div) q.query(range,out);} return out; }
-      subdivide(){ const {x,y,w,h}=this.bounds,hw=w/2,hh=h/2; this.div=[ new QuadTree({x,y,w:hw,h:hh},this.cap,this.depth+1,this.maxDepth), new QuadTree({x:x+hw,y,w:hw,h:hh},this.cap,this.depth+1,this.maxDepth), new QuadTree({x,y:y+hh,w:hw,h:hh},this.cap,this.depth+1,this.maxDepth), new QuadTree({x:x+hw,y:y+hh,w:hw,h:hh},this.cap,this.depth+1,this.maxDepth)]; }
-    }
-    function aabbFromCircle(c){ return {x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2}; }
-    function intersects(a,b){ if(b.r!=null){ return !(b.x+b.r<a.x||b.x-b.r>a.x+a.w||b.y+b.r<a.y||b.y-b.r>a.y+a.h); } return !(b.x+b.w<a.x||b.x>a.x+a.w||b.y+b.h<a.y||b.y>a.y+a.h); }
-
-    const canvas=document.getElementById('game'); const ctx=canvas.getContext('2d'); const hud=document.getElementById('hud');
-    addEventListener('error',e=>{ hud.textContent='에러: '+e.message; });
-    function fit(){ const dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1)); const targetW=960,targetH=540; const w=innerWidth|0,h=innerHeight|0; const s=Math.min(w/targetW,h/targetH); const vw=(targetW*s)|0, vh=(targetH*s)|0; canvas.style.width=vw+'px'; canvas.style.height=vh+'px'; canvas.width=(targetW*dpr)|0; canvas.height=(targetH*dpr)|0; ctx.setTransform(dpr,0,0,dpr,0,0);} addEventListener('resize',fit); fit();
-
-    function seed(){ const url=new URL(location.href); const s=url.searchParams.get('seed'); if(s) return Number(s)>>>0; const saved=Number(localStorage.getItem('lastSeed'))||0; if(saved) return saved>>>0; const gen=(Date.now()&0xffffffff)>>>0; localStorage.setItem('lastSeed',String(gen)); return gen; }
-    const rng=mulberry32(seed());
-    const input=setupInput(canvas);
-
-    const bullets=makePool(2000,()=>({alive:false,x:0,y:0,vx:0,vy:0,r:3,life:0,damage:1,pierce:0}));
-    const enemies=makePool(200, ()=>({alive:false,x:0,y:0,vx:0,vy:0,r:12,hp:3,speed:70}));
-
-    const player={ x:480, y:270, r:12, speed:240, hp:5, fireRate:6, fireCooldown:0, stats:{damage:1, bulletSpeed:640, pierce:0} };
-
-    const G={ rng, input, canvas, ctx, hud, player, pools:{bullets,enemies}, time:0, waveTime:0, score:0, quadtree:null };
-
-    function movement(dt){ const p=player, k=input.keys; let ax=0,ay=0; if(k.KeyW||k.ArrowUp) ay-=1; if(k.KeyS||k.ArrowDown) ay+=1; if(k.KeyA||k.ArrowLeft) ax-=1; if(k.KeyD||k.ArrowRight) ax+=1; if(ax||ay){ const l=Math.hypot(ax,ay); ax/=l; ay/=l; } p.x+=ax*p.speed*dt; p.y+=ay*p.speed*dt; const W=960,H=540; p.x=clamp(p.x,p.r,W-p.r); p.y=clamp(p.y,p.r,H-p.r);
-      for(const b of bullets.arr){ if(!b.alive) continue; b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt; if(b.life<=0) bullets.kill(b);} for(const e of enemies.arr){ if(!e.alive) continue; const dx=p.x-e.x, dy=p.y-e.y; const d=Math.hypot(dx,dy)||1; const sp=e.speed; e.vx=dx/d*sp; e.vy=dy/d*sp; e.x+=e.vx*dt; e.y+=e.vy*dt; } }
-
-    function shooting(dt){ if(input.mouse.down && player.fireCooldown<=0){ const ang=Math.atan2(input.mouse.y-player.y,input.mouse.x-player.x); const vx=Math.cos(ang)*player.stats.bulletSpeed; const vy=Math.sin(ang)*player.stats.bulletSpeed; const spawned=bullets.spawn(b=>{ b.x=player.x; b.y=player.y; b.vx=vx; b.vy=vy; b.r=3; b.life=1.2; b.damage=player.stats.damage; b.pierce=player.stats.pierce;}); if(spawned){ player.fireCooldown=1/Math.max(1e-3,player.fireRate);} } }
-
-    let spawnTimer=0; function waves(dt){ spawnTimer-=dt; const t=G.time; const interval=Math.max(0.15,0.9-t*0.03); if(spawnTimer<=0){ spawnTimer=interval; spawnEnemy(); }}
-    function spawnEnemy(){ const W=960, H=540, margin=12; const edge=(G.rng()*4)|0; let x,y; if(edge===0){ x=randRange(G.rng,0,W); y=-margin; } else if(edge===1){ x=W+margin; y=randRange(G.rng,0,H);} else if(edge===2){ x=randRange(G.rng,0,W); y=H+margin;} else { x=-margin; y=randRange(G.rng,0,H);} const hpScale=1+G.time*0.03; const spScale=60+G.time*1.5; enemies.spawn(e=>{ e.x=x; e.y=y; e.hp=Math.max(1,Math.round(3*hpScale)); e.speed=spScale; e.r=12; }); }
-
-    function collision(dt){ G.quadtree=new QuadTree({x:0,y:0,w:960,h:540},8,0,6); for(const e of enemies.arr) if(e.alive) G.quadtree.insert(e);
-      for(const b of bullets.arr){ if(!b.alive) continue; const range=aabbFromCircle(b); const cands=G.quadtree.query(range,[]); for(const e of cands){ if(!e.alive) continue; const r=b.r+e.r; if(dist2(b.x,b.y,e.x,e.y)<=r*r){ e.hp-=b.damage; b.pierce-=1; if(e.hp<=0){ enemies.kill(e); G.score+=1; } if(b.pierce<0){ bullets.kill(b); break; } } } } }
-
-    let fps=0,_last=performance.now();
-    function render(alpha){ const now=performance.now(); fps=1000/Math.max(1,now-_last); _last=now; const dpr=window.devicePixelRatio||1; const W=960,H=540; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H); ctx.fillStyle='#0b0b0f'; ctx.fillRect(0,0,W,H);
-      ctx.globalAlpha=0.1; ctx.strokeStyle='#ffffff'; for(let x=0;x<W;x+=48){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); } for(let y=0;y<H;y+=48){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); } ctx.globalAlpha=1;
-      ctx.fillStyle='#ef4444'; for(const e of enemies.arr){ if(!e.alive) continue; circle(e.x,e.y,e.r);} ctx.fillStyle='#e5e7eb'; for(const b of bullets.arr){ if(!b.alive) continue; circle(b.x,b.y,b.r);} ctx.fillStyle='#22c55e'; circle(player.x,player.y,player.r); ctx.strokeStyle='#064e3b'; ctx.lineWidth=2; ring(player.x,player.y,player.r+3);
-      ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(input.mouse.x,input.mouse.y); ctx.stroke();
-      ctx.fillStyle='#cbd5e1'; ctx.font='12px ui-monospace, monospace'; ctx.fillText(`FPS:${fps.toFixed(0)} seed score:${G.score}`,8,16); ctx.fillText(`pos:${player.x|0},${player.y|0} mouse:${input.mouse.x|0},${input.mouse.y|0}`,8,32);
-      function circle(x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.fill(); } function ring(x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.stroke(); }
-    }
-
-    let last=0,acc=0; const FIXED=1000/60;
-    function update(dt){ G.time+=dt; G.waveTime+=dt; player.fireCooldown=Math.max(0,player.fireCooldown-dt); movement(dt); shooting(dt); waves(dt); collision(dt); }
-    function frame(t){ const delta=Math.min(32,t-(last||t)); last=t; acc+=delta; while(acc>=FIXED){ update(FIXED/1000); acc-=FIXED; } render(acc/FIXED); requestAnimationFrame(frame); }
-    requestAnimationFrame(frame);
-    window.G=G;
-  })();
-  </script>
+  <canvas id="game" width="960" height="540"></canvas>
+  <pre id="hud"></pre>
+  <script src="src/game.global.js"></script>
 </body>
 </html>

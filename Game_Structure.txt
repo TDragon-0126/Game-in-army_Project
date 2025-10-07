@@ -1,20 +1,5 @@
 /root
   index.html
   /src
-    main.js
-    math.js
-    input.js
-    ecs.js
-    quadtree.js
-    /systems
-      movement.js
-      shooting.js
-      collision.js
-      render.js
-      waves.js
-      drops.js
-    /data
-      items.js
-      enemies.js
-      waves.js
-      
+    game.global.js
+    assets
