@@ -18,6 +18,13 @@
     <button id="btnExport">내보내기</button>
     <button id="btnImport">불러오기</button>
     <span id="info"></span>
+    <div id="levelup" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:10">
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:16px;min-width:460px">
+        <h3 style="margin:6px 0 12px">레벨 업! 하나를 선택하세요</h3>
+        <div id="choices" style="display:grid;gap:8px"></div>
+      </div>
+</div>
+
   </div>
   <canvas id="game" width="960" height="540"></canvas>
   <pre id="hud"></pre>

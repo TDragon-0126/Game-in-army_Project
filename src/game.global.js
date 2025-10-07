@@ -13,6 +13,75 @@
   const SEP_ITER_AABB = 24;   // 이 범위 안만 이웃 검사
   const ENEMY_TURN  = 6.0;   // rad/s, 초당 최대 회전
 
+  // ====== Weapon Config ======
+  const WPN = {
+    spreadDegPerPellet: 10,    // 방사형 각도 간격(도)
+    dmgFallPerPierce: 0.75,    // 관통 1회마다 남는 비율
+    explosiveRadiusBase: 48,   // 폭발 기본 반경(px)
+    explosiveRadiusPerLv: 10,  // 레벨당 반경 증가
+    explosiveSelfDmgMul: 0.5,  // 자기피해 계수(=폭발대미지*계수)
+    explosiveFireRateMul: 1.25 // 폭발탄 선택 시 연사속도 느려짐
+  };
+
+  // ====== Player / Weapon State ======
+  const weapon = {
+    linearLv: 0,   // 1) 직선 탄수 증가
+    radialLv: 0,   // 2) 방사형 탄수 증가
+    pierceLv: 0,   // 3) 관통 레벨
+    explosiveLv: 0 // 4) 폭발 레벨
+  };
+  // 플레이어 기본값(있다면 유지)
+  player.fireRate = 0.12;  // 연사 간격(초)
+  player.dmg      = 1;
+  player.pierce   = 0;
+
+    ITEMS.push(
+    {id:'lin+1', name:'직선 탄수 +1', tags:['무기'], onPick:()=>{ weapon.linearLv++; }},
+    {id:'rad+1', name:'방사형 탄수 +1', tags:['무기'], onPick:()=>{ weapon.radialLv++; }},
+    {id:'pierce+1', name:'관통 +1(관통 시 대미지 점감)', tags:['관통'], onPick:()=>{ weapon.pierceLv++; }},
+    {id:'explosive+1', name:'폭발탄 +1(연사 느려짐, 자기피해)', tags:['폭발'], onPick:()=>{ weapon.explosiveLv++; }}
+  );
+
+  const $ = (s)=>document.querySelector(s);
+
+// 시드 고정 3개 롤
+function rollChoices(){
+  const r = XorShift32(state.seed ^ (state.lvl*0x9e3779b9));
+  const pool=[...ITEMS];
+  const out=[];
+  for(let i=0;i<3 && pool.length;i++){
+    const idx = (pool.length*r()|0);
+    out.push(pool.splice(idx,1)[0]);
+  }
+  return out;
+}
+
+function openLevelUp(){
+  state.paused = true;
+  const wrap = $('#choices'); wrap.innerHTML='';
+  const picks = rollChoices();
+  for(const it of picks){
+    const btn=document.createElement('button');
+    btn.textContent = it.name;
+    btn.style.cssText='text-align:left;padding:10px;border-radius:10px;background:#1b2330;color:#e5ecf6;border:1px solid #31415a';
+    btn.onclick=()=>{
+      if(it.onPick) it.onPick();
+      closeLevelUp();
+      // 재개 전 간극 0.25s + 무적 보너스
+      state.resumeDelay = 0.25;
+      player.ifr = Math.max(player.ifr, 0.25);
+    };
+    wrap.appendChild(btn);
+  }
+  $('#levelup').style.display='flex';
+}
+
+function closeLevelUp(){
+  $('#levelup').style.display='none';
+  state.paused = false;
+}
+
+
   // ====== RNG ======
   function XorShift32(seed){ let x = seed|0 || 123456789; return function(){ x^=x<<13; x^=x>>>17; x^=x<<5; return (x>>>0)/4294967296; }; }
   const RNG = { range:(r,a,b)=>a+(b-a)*r(), int:(r,a,b)=> a+((b-a+1)*r()|0), pick:(r,arr)=>arr[(arr.length*r())|0], chance:(r,p)=> r()<p };
@@ -71,7 +140,7 @@
   const player = {x:W/2,y:H/2,r:10,hp:5,maxHp:5, ifr:0, fireCD:0, speed:210, dmg:1, pierce:0};
 
   // ====== State ======
-  const state = { seed: Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10, alive:true, score:0, spawnCD: 0, shakeT:0, shakeAmp:0 };
+  const state = { seed: Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10, alive:true, score:0, spawnCD: 0, shakeT:0, shakeAmp:0, paused:false, resumeDelay:0 };
   state.r = XorShift32(state.seed);
 
   function addShake(t=0.15, amp=6){ state.shakeT=Math.max(state.shakeT,t); state.shakeAmp=Math.max(state.shakeAmp,amp); }
@@ -79,6 +148,11 @@
   // ====== Systems ======
   function update(dt){
     if(!state.alive) return;
+    if(state.paused) return;                 // 선택 중 완전 정지
+    if(state.resumeDelay>0){                 // 간극 타이머
+      state.resumeDelay -= dt;
+      return;                                // UI 닫힌 직후 잠깐 멈춤
+    }
     state.time += dt;
     inputSystem(dt); bulletSystem(dt); enemySystem(dt); collisionSystem(); cleanupSystem();
   }
@@ -89,18 +163,87 @@
     const len = Math.hypot(ax,ay)||1; player.x = clamp(player.x + (ax/len)*player.speed*dt, player.r, W-player.r);
     player.y = clamp(player.y + (ay/len)*player.speed*dt, player.r, H-player.r);
 
-    // fire
     player.fireCD -= dt;
-    if(Input.m && player.fireCD<=0){
-      const dx = Input.mx - player.x, dy = Input.my - player.y; const L = Math.hypot(dx,dy)||1; const sp=420;
-      bullets.spawn(o=>{ o.x=player.x; o.y=player.y; o.vx=dx/L*sp; o.vy=dy/L*sp; o.life=1.4; o.team=0; o.pierce=player.pierce; o.dmg=player.dmg; });
-      player.fireCD = 0.12;
+    if(Input.m && !state.paused && player.fireCD<=0){
+      const dx = Input.mx - player.x, dy = Input.my - player.y;
+      const L = Math.hypot(dx,dy)||1;
+      fireWeapon(dx/L, dy/L);
     }
+
     if(player.ifr>0) player.ifr-=dt;
   }
 
+  function fireWeapon(ax, ay){ // ax,ay = 조준 단위벡터
+    const dirA = Math.atan2(ay, ax);
+
+    // ----- 탄수 계산 -----
+    const linearCount = 1 + weapon.linearLv;       // 직선 탄수
+    const radialCount = 1 + weapon.radialLv;       // 방사형 펠릿 수
+    const totalShots  = Math.max(linearCount, radialCount);
+
+    // 방사형: 중앙각 기준 좌우 대칭 배치
+    const stepRad = (WPN.spreadDegPerPellet * Math.PI/180);
+
+    for(let i=0;i<totalShots;i++){
+      // i를 기준으로 각 오프셋 계산
+      let a = dirA;
+      if (radialCount>1){
+        const center = (radialCount-1)/2;
+        const off = (i - center) * stepRad; // -k*step ... +k*step
+        a = dirA + off;
+      }
+      // 직선 증가만 있고 방사형=1일 때는 a=dirA로 동일 탄 여러 발 → 산탄 아님
+
+      const sp = 420; // 탄속
+      const vx = Math.cos(a)*sp, vy = Math.sin(a)*sp;
+
+      bullets.spawn(b=>{
+        b.x=player.x; b.y=player.y;
+        b.vx=vx; b.vy=vy;
+        b.life = 1.1 - Math.min(0.5, weapon.explosiveLv*0.15); // 폭발탄일수록 사거리↓
+        b.team = 0;
+        b.r    = 3;
+        b.dmg  = player.dmg;
+        // 관통 설정
+        b.pierce = player.pierce + weapon.pierceLv;
+        b.dmgFall = WPN.dmgFallPerPierce; // 관통 시 대미지 감소 계수
+
+        // 폭발 속성
+        b.explosive = (weapon.explosiveLv>0);
+        b.explRadius = WPN.explosiveRadiusBase + WPN.explosiveRadiusPerLv*(weapon.explosiveLv-1);
+      });
+    }
+
+    // 폭발탄 선택 시 연사 느리게
+    player.fireCD = player.fireRate * (weapon.explosiveLv>0 ? WPN.explosiveFireRateMul : 1);
+  }
+
+  bullets.each(b=>{
+    b.x+=b.vx*dt; b.y+=b.vy*dt;
+    b.life-=dt;
+    if(b.life<=0){
+      if(b.explosive) explodeAt(b.x,b.y,b.explRadius,b.dmg);
+      bullets.release(b);
+    }
+    if(b.x<-20||b.x>W+20||b.y<-20||b.y>H+20){
+      if(b.explosive) explodeAt(b.x,b.y,b.explRadius,b.dmg);
+      bullets.release(b);
+    }
+  });
+
   function bulletSystem(dt){
-    bullets.each(o=>{ o.x+=o.vx*dt; o.y+=o.vy*dt; o.life-=dt; if(o.x<-20||o.x>W+20||o.y<-20||o.y>H+20||o.life<=0) bullets.release(o); });
+    bullets.each(b=>{
+    b.x+=b.vx*dt; b.y+=b.vy*dt;
+    b.life-=dt;
+    if(b.life<=0){
+      if(b.explosive) explodeAt(b.x,b.y,b.explRadius,b.dmg);
+      bullets.release(b);
+    }
+    if(b.x<-20||b.x>W+20||b.y<-20||b.y>H+20){
+      if(b.explosive) explodeAt(b.x,b.y,b.explRadius,b.dmg);
+      bullets.release(b);
+    }
+  });
   }
 
   function steer(e, dt, sp, tx, ty){
@@ -214,34 +357,44 @@
     }
     // bullets vs enemies
     bullets.each(b=>{
-      if(b.team!==0) return;
-      const range = {x:b.x-16,y:b.y-16,w:32,h:32};
-      const cand=[]; qt.query(range,cand);
-      for(const e of cand){
-        const dx=e.x-b.x, dy=e.y-b.y; const rr=(e.r+b.r);
-        if(dx*dx+dy*dy <= rr*rr){
-          // 피해
-          e.hp -= b.dmg;
-          // 둔화 부여: 0.25s 동안 속도 0.8배
-          e.slowMul = 0.8; 
-          e.slowTimer = 0.25;
+  if(b.team!==0) return;
+  const cand=[]; qt.query({x:b.x-24,y:b.y-24,w:48,h:48}, cand);
+  for(const e of cand){
+    const dx=e.x-b.x, dy=e.y-b.y; const rr=(e.r+b.r);
+    if(dx*dx+dy*dy <= rr*rr){
+      // 피격
+      e.hp -= b.dmg;
+      e.slowMul=0.8; e.slowTimer=0.25; e.hitTimer=0.08;
 
-          // 관통 처리
-          if(b.pierce>0){ b.pierce--; } else { bullets.release(b); }
-
-          // 사망 처리
-          if(e.hp<=0){
-            enemies.release(e);
-            state.score += 10;
-            addShake(0.1, 4); 
-            drops.spawn(d=>{ d.x=e.x; d.y=e.y; d.vx=0; d.vy=0; d.kind='xp'; });
-          }
-          break;
-        }
+      // 폭발 탄이면 즉시 폭발 처리(근접기준)
+      if(b.explosive){
+        explodeAt(b.x, b.y, b.explRadius, b.dmg);
+        bullets.release(b);
+        break;
       }
-    });
+
+      // 관통 처리: 대미지 감쇠
+      if(b.pierce>0){
+        b.pierce--;
+        b.dmg = Math.max(0, b.dmg * (b.dmgFall||0.75));
+        // 관통 후에도 계속 비행
+      }else{
+        bullets.release(b);
+      }
+
+      // 사망
+      if(e.hp<=0){
+        enemies.release(e);
+        state.score+=10;
+        addShake(0.1,4);
+        drops.spawn(d=>{ d.x=e.x; d.y=e.y; d.vx=0; d.vy=0; d.kind='xp'; });
+      }
+      break;
+    }
+  }
+});
     // drops vs player
-    drops.each(d=>{ const dx=player.x-d.x, dy=player.y-d.y; const rr=player.r+d.r; if(dx*dx+dy*dy<=rr*rr){ drops.release(d); state.xp++; if(state.xp>=state.nextLvl){ state.xp=0; state.lvl++; state.nextLvl = Math.floor(state.nextLvl*1.25); /* TODO: 레벨업 선택 UI */ } }
+    drops.each(d=>{ const dx=player.x-d.x, dy=player.y-d.y; const rr=player.r+d.r; if(dx*dx+dy*dy<=rr*rr){ drops.release(d); state.xp++; if(state.xp>=state.nextLvl){ state.xp=0; state.lvl++; state.nextLvl = Math.floor(state.nextLvl*1.25); openLevelUp(); } }
     });
   }
 
@@ -333,6 +486,7 @@
 
   bullets.reset(); enemies.reset(); drops.reset();
   state.spawnCD = SPAWN_BASE_COOLDOWN;
+  state.paused=false; state.resumeDelay=0;
 }
 
   // autostart preview
