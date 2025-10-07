@@ -11,6 +11,7 @@
   const ENEMY_ACCEL = 600;
   const SEP_PAD = 2;          // 약간의 겹침 허용
   const SEP_ITER_AABB = 24;   // 이 범위 안만 이웃 검사
+  const ENEMY_TURN  = 6.0;   // rad/s, 초당 최대 회전
 
   // ====== RNG ======
   function XorShift32(seed){ let x = seed|0 || 123456789; return function(){ x^=x<<13; x^=x>>>17; x^=x<<5; return (x>>>0)/4294967296; }; }
