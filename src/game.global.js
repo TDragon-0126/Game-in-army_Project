@@ -195,7 +195,7 @@
 
   function cleanupSystem(){
     // --- Drops update: 고정 + 자기장 흡입만 ---
-    const MAG_R = 10;      // 흡입 시작 반경
+    const MAG_R = 30;      // 흡입 시작 반경
     const MAG_ACC = 600;    // 가속도
     const MAG_MAX = 220;    // 최대 속도
 
