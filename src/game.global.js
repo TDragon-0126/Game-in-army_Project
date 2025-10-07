@@ -25,14 +25,16 @@
   // ====== Pool ======
   function makePool(factory, size){
     const raw=new Array(size); const free=[];
-    for(let i=0;i<size;i++){ raw[i]=factory(); raw[i]._poolIndex=i; raw[i].alive=false; free.push(raw[i]); }
+    for(let i=0;i<size;i++){ raw[i]=factory(); raw[i].alive=false; free.push(raw[i]); }
     return {
       spawn(init){ if(!free.length) return null; const o=free.pop(); init(o); o.alive=true; return o; },
       release(o){ if(!o.alive) return; o.alive=false; free.push(o); },
       each(fn){ for(const o of raw) if(o.alive) fn(o); },
+      reset(){ free.length=0; for(const o of raw){ o.alive=false; free.push(o); } },
       raw, free
     };
   }
+
 
   // ====== Quadtree ======
   class Quad{
@@ -63,7 +65,11 @@
   state.r = XorShift32(state.seed);
 
   // ====== Systems ======
-  function update(dt){ if(!state.alive) return; state.time+=dt; spawnSystem(dt); inputSystem(dt); bulletSystem(dt); enemySystem(dt); collisionSystem(); cleanupSystem(); }
+  function update(dt){
+    if(!state.alive) return;
+    state.time += dt;
+    inputSystem(dt); bulletSystem(dt); enemySystem(dt); collisionSystem(); cleanupSystem();
+  }
 
   function inputSystem(dt){
     const ax = (Input.k['KeyD']?1:0) - (Input.k['KeyA']?1:0);
@@ -188,10 +194,17 @@
   document.getElementById('btnExport').onclick=()=>{ const s=localStorage.getItem('rbh_save')||'{}'; navigator.clipboard?.writeText(s); alert('저장 JSON을 클립보드에 복사했습니다.'); };
   document.getElementById('btnImport').onclick=()=>{ const s=prompt('저장 JSON 붙여넣기'); if(s){ try{ localStorage.setItem('rbh_save', s); alert('불러오기 완료'); }catch(e){ alert('잘못된 JSON'); } } };
 
-  function resetRun(){ const seed=(load()?.lastSeed ?? (Date.now()|0)); state.seed=seed; state.r=XorShift32(seed); state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0; player.hp=player.maxHp; bullets.raw.forEach(o=>o.alive=false); bullets.free.length=bullets.raw.length; enemies.raw.forEach(o=>o.alive=false); enemies.free.length=enemies.raw.length; drops.raw.forEach(o=>o.alive=false); drops.free.length=drops.raw.length; }
+  function resetRun(){
+  const seed=(load()?.lastSeed ?? (Date.now()|0));
+  state.seed=seed; state.r=XorShift32(seed);
+  state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0;
+  player.hp=player.maxHp;
+
+  bullets.reset(); enemies.reset(); drops.reset();
+}
 
   // autostart preview
-  resetRun(); requestAnimationFrame(tick);
+  requestAnimationFrame(tick);
   // expose for console debug
   Game.state=state; Game.player=player; Game.enemies=enemies; Game.bullets=bullets; Game.drops=drops; Game.save=save; Game.load=load;
 })();
