@@ -196,8 +196,8 @@
   function cleanupSystem(){
     // --- Drops update: 고정 + 자기장 흡입만 ---
     const MAG_R = 30;      // 흡입 시작 반경
-    const MAG_ACC = 600;    // 가속도
-    const MAG_MAX = 220;    // 최대 속도
+    const MAG_ACC = 1200;    // 가속도
+    const MAG_MAX = 600;    // 최대 속도
 
     drops.each(d=>{
       const dx = player.x - d.x, dy = player.y - d.y;
@@ -214,6 +214,8 @@
       }
       // dist ≥ MAG_R이면 아무 것도 하지 않음 → 그 자리 고정
     });
+    // gameover
+    if(player.hp<=0) state.alive=false;
   }
 
   // ====== Render ======
