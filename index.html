@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>임시 게임 개발</title>
+    <style>
+        html, body { height: 100%; margin: 0; background: #0b0b0f; color: #e5e7eb; }
+        #wrap { height: 100%; display: grid; place-items: center; }
+        canvas { background: #0b0b0f; display: block; image-rendering: pixelated; }
+        .hud { position: fixed; left: 12px; top: 10px; font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: #cbd5e1; }
+    </style>
+</head>
+<body>
+    <div id="wrap">
+        <canvas id="game" width="960" height="540"></canvas>
+    </div>
+    <div class="hud" id="hud"></div>
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>
