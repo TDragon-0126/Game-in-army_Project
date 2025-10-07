@@ -100,6 +100,27 @@
     bullets.each(o=>{ o.x+=o.vx*dt; o.y+=o.vy*dt; o.life-=dt; if(o.x<-20||o.x>W+20||o.y<-20||o.y>H+20||o.life<=0) bullets.release(o); });
   }
 
+  function steer(e, dt, sp, tx, ty){
+  // 1) 현재 각도, 목표 각도
+  const va = Math.atan2(e.vy||0, e.vx||0);
+  const ta = Math.atan2(ty, tx);
+  let da = ta - va; while(da> Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI;
+
+  // 2) 회전 제한
+  const maxTurn = ENEMY_TURN * dt;
+  const na = va + Math.max(-maxTurn, Math.min(maxTurn, da));
+
+  // 3) 목표 속도 크기까지 가속 제한
+  const vMag = Math.hypot(e.vx, e.vy);
+  const vTarget = sp;
+  const dv = Math.max(-ENEMY_ACCEL*dt, Math.min(ENEMY_ACCEL*dt, vTarget - vMag));
+  const newMag = Math.max(0, vMag + dv);
+
+  // 4) 새 속도
+  e.vx = Math.cos(na) * newMag;
+  e.vy = Math.sin(na) * newMag;
+}
+
   // enemySystem 관련 부분
   function enemySystem(dt){
     // ---- Spawn Scheduler ----
@@ -134,17 +155,7 @@
       const sp = baseSp * e.slowMul;  // 목표 속도
       const dx = player.x - e.x, dy = player.y - e.y;
       const L = Math.hypot(dx,dy)||1;
-      const vxTarget = dx/L * sp, vyTarget = dy/L * sp;
-
-      // 가속 한계로 목표속도에 수렴
-      const ax = Math.max(Math.min(vxTarget - e.vx, ENEMY_ACCEL*dt), -ENEMY_ACCEL*dt);
-      const ay = Math.max(Math.min(vyTarget - e.vy, ENEMY_ACCEL*dt), -ENEMY_ACCEL*dt);
-      e.vx += ax; e.vy += ay;
-
-      // 속도 캡(수학적 최대 sp 유지)
-      const vL = Math.hypot(e.vx,e.vy);
-      if (vL > sp){ e.vx = e.vx/vL * sp; e.vy = e.vy/vL * sp; }
-
+      steer(e, dt, sp, dx/L, dy/L);
       e.x += e.vx * dt; e.y += e.vy * dt;
     });
     qt.clear();
