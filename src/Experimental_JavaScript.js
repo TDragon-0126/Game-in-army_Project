@@ -8,12 +8,37 @@
 (function(){
 
   /* ===================== [dev_option] ===================== */
-  function toggleDev(on){
-  state.devOn = (on!==undefined)? on : !state.devOn;
-  const el = document.getElementById('dev');
-  if(el) el.style.display = state.devOn ? 'block' : 'none';
-  if(state.devOn) fillDev();
+  async function toggleDev(on){
+    const want = (on!==undefined) ? on : !state.devOn;
+    const el = document.getElementById('dev');
+    if(!el) return;
+
+    if(want){
+      if(!state.devUnlocked){
+        const wait = devLockCheck();
+        if(wait>0){ alert(`잠금 중: ${Math.ceil(wait/1000)}초 후 다시 시도하세요.`); return; }
+
+        const pwd = prompt('개발자 모드 비밀번호를 입력하세요.');
+        if(pwd==null) return;
+
+        const cand = await sha256Hex(DEV_PWD_PEPPER_PREFIX + pwd + DEV_PWD_PEPPER_SUFFIX);
+        if(cand !== DEV_PWD_HASH_HEX){
+          const backoff = devLockFailBackoff();
+          alert('비밀번호가 올바르지 않습니다.');
+          return;
+        }
+        devLockReset();
+        state.devUnlocked = true;
+      }
+      state.devOn = true;
+      el.style.display = 'block';
+      fillDev();
+    }else{
+      state.devOn = false;
+      el.style.display = 'none';
+    }
   }
+
   addEventListener('keydown', (e)=>{ if(e.code==='F1'){ e.preventDefault(); toggleDev(); }});
   document.getElementById('devClose')?.addEventListener('click', ()=>toggleDev(false));
 
@@ -82,6 +107,9 @@
   const SPAWN_SAFE_PLAYER_R = 120;                 // 플레이어와 최소 거리
   const ENEMY_WARMUP = 0.18;                       // 스폰 후 웜업(초)
   const SEP_MAX_IMP = 400;                         // 프레임당 최대 분리 임펄스(px/s)
+  const DEV_PWD_HASH_HEX = '89c0df90148e88f4fa0cf18444e087aa41cb7ecf6b6f220c75fa870f57f6f7ee';
+  const DEV_PWD_PEPPER_PREFIX = 'MadeBy:';         // HASH_HEX PEPPER_PREFIX
+  const DEV_PWD_PEPPER_SUFFIX = ':TDragon';        // HASH_HEX PEPPER_SUFFIX
 
   // 스폰·난이도(간단형)
   const DIFF={
@@ -254,6 +282,30 @@
     const vMag=Math.hypot(e.vx,e.vy), vTarget=sp; const dv=Math.max(-ENEMY_ACCEL*dt, Math.min(ENEMY_ACCEL*dt, vTarget - vMag));
     const newMag=Math.max(0, vMag+dv); e.vx=Math.cos(na)*newMag; e.vy=Math.sin(na)*newMag;
   }
+
+  async function sha256Hex(str){
+    const enc = new TextEncoder().encode(str);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
+  function devLockCheck(){
+    const now = Date.now();
+    const until = +(localStorage.getItem('dev_fail_until')||0);
+    return now < until ? until - now : 0;
+  }
+  function devLockFailBackoff(){
+    const tries = 1 + +(localStorage.getItem('dev_fail_tries')||0);
+    localStorage.setItem('dev_fail_tries', String(tries));
+    const waitMs = Math.min(60000, 10000 * tries * tries); // 10s, 40s, 90s...
+    localStorage.setItem('dev_fail_until', String(Date.now()+waitMs));
+    return waitMs;
+  }
+  function devLockReset(){
+    localStorage.removeItem('dev_fail_tries');
+    localStorage.removeItem('dev_fail_until');
+  }
+
 
   /* ======================= [systems] ================== */
   function update(dt){
