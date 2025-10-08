@@ -54,19 +54,6 @@ SpawnCD ${spawnNow}s  NextCD ${spawnNext}s
 Enemy Spd ${spNow}  HP now ${hpNow}  HP avg ${hpAvg}
 Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
 }
-function tick(now){
-  // FPS 측정(EMA)
-  const dtms = now - last; last = now;
-  const fpsSample = dtms>0 ? 1000/dtms : 60;
-  state.fps = state.fps*0.9 + fpsSample*0.1;
-
-  acc += Math.min(0.25, dtms/1000);
-  while(acc>=FIXED_DT){ update(FIXED_DT); acc-=FIXED_DT; }
-  render();
-  updateDebugHUD();     // ← 추가
-  requestAnimationFrame(tick);
-}
-ensureDebugHUD();        // 시작 시 DOM 보장
 
   
 
@@ -575,7 +562,7 @@ ensureDebugHUD();        // 시작 시 DOM 보장
   document.getElementById('btnImport')?.addEventListener('click', ()=>{ const s=prompt('저장 JSON 붙여넣기'); if(s){ try{ localStorage.setItem('rbh_save', s); alert('불러오기 완료'); }catch(e){ alert('잘못된 JSON'); } } });
 
   let acc=0, last=performance.now();
-  function tick(now){ acc+=Math.min(0.25,(now-last)/1000); last=now; while(acc>=FIXED_DT){ update(FIXED_DT); acc-=FIXED_DT; } render(); requestAnimationFrame(tick); }
+  function tick(now){ acc+=Math.min(0.25,(now-last)/1000); last=now; while(acc>=FIXED_DT){ update(FIXED_DT); acc-=FIXED_DT; } render(); updateDebugHUD(); requestAnimationFrame(tick); }
 
   // 시작
   requestAnimationFrame(tick);
