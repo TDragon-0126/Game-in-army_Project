@@ -78,6 +78,10 @@
   const SEP_RANGE=24, SEP_K=1200;                  // 적-적 분리 강도
   const MAG_R=30, MAG_ACC=10000, MAG_MAX=5000;     // 드랍 마그넷
   const LINEAR_LANE_SPACING = 10;                  // 병렬 탄 간격(px)
+  const SPAWN_SAFE_ENEMY_R = 28;                   // 다른 적과 최소 거리
+  const SPAWN_SAFE_PLAYER_R = 120;                 // 플레이어와 최소 거리
+  const ENEMY_WARMUP = 0.18;                       // 스폰 후 웜업(초)
+  const SEP_MAX_IMP = 400;                         // 프레임당 최대 분리 임펄스(px/s)
 
   // 스폰·난이도(간단형)
   const DIFF={
@@ -233,7 +237,13 @@
   function spawnEnemy(){
     const side=RNGU.int(state.r,0,3); let x=0,y=0;
     if(side===0){x=RNGU.range(state.r,0,W); y=-16;} else if(side===1){x=W+16; y=RNGU.range(state.r,0,H);} else if(side===2){x=RNGU.range(state.r,0,W); y=H+16;} else {x=-16; y=RNGU.range(state.r,0,H);} 
-    enemies.spawn(e=>{ e.x=x; e.y=y; e.hp=enemyHpNow(); e.maxHp=e.hp; e.t=0; e.slowMul=1; e.slowTimer=0; e.hitTimer=0; e.vx=0; e.vy=0; });
+    enemies.spawn(e=>{
+      e.x=x; e.y=y; e.hp=enemyHpNow(); e.maxHp=e.hp;
+      e.t=0; e.slowMul=1; e.slowTimer=0; e.hitTimer=0; e.vx=0; e.vy=0; e.warm=ENEMY_WARMUP;
+      // 플레이어와 너무 가까우면 밖으로 밀어 배치
+      const dx=player.x-e.x, dy=player.y-e.y, d=Math.hypot(dx,dy);
+      if(d < SPAWN_SAFE_PLAYER_R){ const nx=dx/(d||1), ny=dy/(d||1); const k=SPAWN_SAFE_PLAYER_R-d; e.x-=nx*k; e.y-=ny*k; }
+    });
   }
 
   // 조향(회전/가속 제한)
@@ -289,13 +299,39 @@
     // Move
     qt.clear(); enemies.each(e=>qt.insert(e));
     enemies.each(e=>{
-      e.t+=dt; if(e.slowTimer>0){ e.slowTimer-=dt; if(e.slowTimer<=0) e.slowMul=1; } if(e.hitTimer>0) e.hitTimer-=dt;
-      const sp = enemySpeedNow()*e.slowMul; const dx=player.x-e.x, dy=player.y-e.y; const L=Math.hypot(dx,dy)||1; steer(e,dt,sp,dx/L,dy/L); e.x+=e.vx*dt; e.y+=e.vy*dt;
+      e.t += dt;
+      if(e.warm>0) e.warm = Math.max(0, e.warm - dt);
+      if(e.slowTimer>0){ e.slowTimer -= dt; if(e.slowTimer<=0) e.slowMul=1; }
+      if(e.hitTimer>0)  e.hitTimer  -= dt;
+
+      const sp = enemySpeedNow() * e.slowMul;
+      const dx = player.x - e.x, dy = player.y - e.y, L = Math.hypot(dx,dy)||1;
+      // 웜업 동안 목표속도 60%로 조향
+      steer(e, dt, sp * (e.warm>0 ? 0.6 : 1.0), dx/L, dy/L);
+
+      e.x += e.vx*dt; e.y += e.vy*dt;
     });
     // Soft separation (속도 임펄스)
     enemies.each(e=>{
       const cand=[]; qt.query({x:e.x-SEP_RANGE,y:e.y-SEP_RANGE,w:SEP_RANGE*2,h:SEP_RANGE*2}, cand);
-      for(const n of cand){ if(n===e) continue; const dx=e.x-n.x, dy=e.y-n.y; const dist=Math.hypot(dx,dy); const minDist=(e.r+n.r)-2; if(dist>0 && dist<minDist){ const nx=dx/dist, ny=dy/dist; const acc=SEP_K*(minDist-dist); e.vx+=nx*acc*dt; e.vy+=ny*acc*dt; n.vx-=nx*acc*dt; n.vy-=ny*acc*dt; }}
+      for(const n of cand){
+        if(n===e) continue;
+        const dx=e.x-n.x, dy=e.y-n.y, dist=Math.hypot(dx,dy);
+        const minDist=(e.r+n.r)-2;
+        if(dist>0 && dist<minDist){
+          const nx=dx/dist, ny=dy/dist;
+          // 웜업 중이면 분리 강도 50%
+          const k = (e.warm>0 || n.warm>0) ? 0.5 : 1.0;
+          const acc = Math.min(SEP_K*(minDist-dist)*k, SEP_MAX_IMP/Math.max(1e-6,dt));
+          e.vx += nx * acc * dt; e.vy += ny * acc * dt;
+          n.vx -= nx * acc * dt; n.vy -= ny * acc * dt;
+        }
+      }
+    });
+    enemies.each(e=>{
+      const spCap = enemySpeedNow()*e.slowMul*(e.warm>0 ? 0.6 : 1.0);
+      const vL = Math.hypot(e.vx,e.vy);
+      if(vL > spCap){ e.vx = e.vx/vL * spCap; e.vy = e.vy/vL * spCap; }
     });
   }
 
