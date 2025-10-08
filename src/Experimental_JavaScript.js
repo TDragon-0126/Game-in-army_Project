@@ -15,9 +15,19 @@
   if(want){
     // 잠금 확인·검증(사용 중인 해시 검증 넣으세요)
     if(!state.devUnlocked){
+      const wait = devLockCheck();
+      if(wait>0){ alert(`잠금 중: ${Math.ceil(wait/1000)}초 후 다시 시도하세요.`); return; }
+
       const pwd = prompt('개발자 모드 비밀번호를 입력하세요.');
-      if(!pwd) return;
-      // ...해시 검증 통과 시:
+      if(pwd==null) return;
+
+      const cand = await sha256Hex(DEV_PWD_PEPPER_PREFIX + pwd + DEV_PWD_PEPPER_SUFFIX);
+      if(cand !== DEV_PWD_HASH_HEX){
+        const backoff = devLockFailBackoff();
+        alert('비밀번호가 올바르지 않습니다.');
+        return;
+      }
+      devLockReset();
       state.devUnlocked = true;
     }
     state.devOn = true;
@@ -373,51 +383,57 @@
 
   /* -------------------- [enemy] ----------------------- */
   function enemySystem(dt){
-    // Spawn
-    state.spawnCD -= dt;
-    const activeEnemies = enemies.raw.length - enemies.free.length;
-    if(state.time>DIFF.grace && state.spawnCD<=0 && activeEnemies < maxEnemiesNow()){
-      const pack=packCountNow(); for(let i=0;i<pack;i++){ if(!enemies.free.length) break; spawnEnemy(); }
-      state.spawnCD = spawnCooldownNow();
-    }
-    // Move
-    qt.clear(); enemies.each(e=>qt.insert(e));
-    enemies.each(e=>{
-      e.t += dt;
-      if(e.warm>0) e.warm = Math.max(0, e.warm - dt);
-      if(e.slowTimer>0){ e.slowTimer -= dt; if(e.slowTimer<=0) e.slowMul=1; }
-      if(e.hitTimer>0)  e.hitTimer  -= dt;
-
-      const sp = enemySpeedNow() * e.slowMul;
-      const dx = player.x - e.x, dy = player.y - e.yconst 
-      const [ux,uy] = safeNorm(dx,dy);
-      steer(e, dt, enemySpeedNow()*(e.warm>0?0.6:1.0)*e.slowMul, ux, uy);
-
-      e.x += e.vx*dt; e.y += e.vy*dt;
-    });
-    // Soft separation (속도 임펄스)
-    enemies.each(e=>{
-      const cand=[]; qt.query({x:e.x-SEP_RANGE,y:e.y-SEP_RANGE,w:SEP_RANGE*2,h:SEP_RANGE*2}, cand);
-      for(const n of cand){
-        if(n===e) continue;
-        const dx=e.x-n.x, dy=e.y-n.y, dist=Math.hypot(dx,dy);
-        const minDist=(e.r+n.r)-2;
-        if(dist>0 && dist<minDist){
-          const nx=dx/dist, ny=dy/dist;
-          // 웜업 중이면 분리 강도 50%
-          const k = (e.warm>0 || n.warm>0) ? 0.5 : 1.0;
-          const acc = Math.min(SEP_K*(minDist-dist)*k, SEP_MAX_IMP/Math.max(1e-6,dt));
-          e.vx += nx * acc * dt; e.vy += ny * acc * dt;
-          n.vx -= nx * acc * dt; n.vy -= ny * acc * dt;
-        }
-      }
-    });
-    enemies.each(e=>{
-      const spCap = enemySpeedNow()*e.slowMul*(e.warm>0 ? 0.6 : 1.0);
-      const vL = Math.hypot(e.vx,e.vy);
-      if(vL > spCap){ e.vx = e.vx/vL * spCap; e.vy = e.vy/vL * spCap; }
-    });
+  // ---- Spawn ----
+  state.spawnCD -= dt;
+  const active = enemies.raw.length - enemies.free.length;
+  if(state.time>DIFF.grace && state.spawnCD<=0 && active < maxEnemiesNow()){
+    const pack = packCountNow();
+    for(let i=0;i<pack;i++){ if(!enemies.free.length) break; spawnEnemy(); }
+    state.spawnCD = spawnCooldownNow();
   }
+
+  // ---- Move (조향→이동) ----
+  qt.clear(); enemies.each(e=>qt.insert(e));
+  enemies.each(e=>{
+    e.t += dt;
+    if(e.warm>0) e.warm = Math.max(0, e.warm - dt);
+    if(e.slowTimer>0){ e.slowTimer-=dt; if(e.slowTimer<=0) e.slowMul=1; }
+    if(e.hitTimer>0)  e.hitTimer -= dt;
+
+    const dx = player.x - e.x, dy = player.y - e.y;
+    const L  = Math.hypot(dx,dy) || 1;
+    const ux = dx/L, uy = dy/L;
+
+    const sp = enemySpeedNow() * e.slowMul * (e.warm>0 ? 0.6 : 1.0); // 웜업=60%
+    steer(e, dt, sp, ux, uy);
+    e.x += e.vx*dt; e.y += e.vy*dt;
+  });
+
+  // ---- Soft separation(속도 임펄스) ----
+  enemies.each(e=>{
+    const cand=[]; qt.query({x:e.x-SEP_RANGE,y:e.y-SEP_RANGE,w:SEP_RANGE*2,h:SEP_RANGE*2}, cand);
+    for(const n of cand){
+      if(n===e) continue;
+      const dx=e.x-n.x, dy=e.y-n.y, dist=Math.hypot(dx,dy);
+      const minDist=(e.r+n.r)-2;
+      if(dist>0 && dist<minDist){
+        const nx=dx/dist, ny=dy/dist;
+        const k = (e.warm>0 || n.warm>0) ? 0.5 : 1.0;
+        const acc = Math.min(SEP_K*(minDist-dist)*k, SEP_MAX_IMP/Math.max(1e-6,dt));
+        e.vx += nx*acc*dt; e.vy += ny*acc*dt;
+        n.vx -= nx*acc*dt; n.vy -= ny*acc*dt;
+      }
+    }
+  });
+
+  // ---- 최종 속도 캡(분리 반영 후) ----
+  enemies.each(e=>{
+    const cap = enemySpeedNow() * e.slowMul * (e.warm>0 ? 0.6 : 1.0);
+    const vL  = Math.hypot(e.vx,e.vy);
+    if(vL > cap){ e.vx = e.vx/vL * cap; e.vy = e.vy/vL * cap; }
+  });
+}
+
 
   /* -------------------- [collision] ------------------- */
   function collisionSystem(){
