@@ -404,6 +404,11 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
       WPN.explosiveSelfDmgMul = 0.3; // 자기피해 완화
     }
   }
+  // dev패널에서 레벨을 직접 만졌을 때도 일관성 유지
+  function syncTreeLocks(){ 
+    if(weapon.linearLv>0) state.tree.lockRadial = true;
+    if(weapon.radialLv>0) state.tree.lockLinear = true;
+  }
 
 
   // devOption창 비밀번호 세팅
