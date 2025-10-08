@@ -219,7 +219,8 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   cvs.addEventListener('mousemove',e=>{ const r=cvs.getBoundingClientRect(); Input.mx=e.clientX-r.left; Input.my=e.clientY-r.top; });
   const state={ seed:Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10,
                 alive:false, score:0, spawnCD:0, paused:false, resumeDelay:0,
-                shakeT:0, shakeAmp:0, devOn: false, devUnlocked:false, devHold:false, debugOn:false, fps:60 };
+                shakeT:0, shakeAmp:0, devOn: false, devUnlocked:false, devHold:false, debugOn:false, fps:60,
+                tree:{ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false } };
 
   /* ===================== [weapon] ===================== */
   const WPN={ spreadDegPerPellet:10, dmgFallPerPierce:0.75, explosiveRadiusBase:48, explosiveRadiusPerLv:10, explosiveSelfDmgMul:0.5, explosiveFireRateMul:1.25 };
@@ -227,10 +228,10 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
 
   /* ======================= [items] ==================== */
   const ITEMS=[
-    {id:'lin+1', name:'직선 탄수 +1', onPick:()=>{ weapon.linearLv++; }},
-    {id:'rad+1', name:'방사형 탄수 +1', onPick:()=>{ weapon.radialLv++; }},
-    {id:'pierce+1', name:'관통 +1(감쇠)', onPick:()=>{ weapon.pierceLv++; }},
-    {id:'explosive+1', name:'폭발탄 +1', onPick:()=>{ weapon.explosiveLv++; player.fireRate=0.12*WPN.explosiveFireRateMul; }}
+    {id:'lin+1', name:'직선 탄수 +1', onPick:()=>{ weapon.linearLv++; state.tree.lockRadial=true; applyMilestones(); }},
+    {id:'rad+1', name:'방사형 탄수 +1', onPick:()=>{ weapon.radialLv++; state.tree.lockLinear=true; applyMilestones(); }},
+    {id:'pierce+1', name:'관통 +1(감쇠)', onPick:()=>{ weapon.pierceLv++; applyMilestones(); }},
+    {id:'explosive+1', name:'폭발탄 +1', onPick:()=>{ weapon.explosiveLv++; player.fireRate=0.12*WPN.explosiveFireRateMul; applyMilestones(); }},
   ];
 
   /* ======================= [pool] ===================== */
@@ -290,7 +291,16 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   function addShake(t=0.15, amp=6){ state.shakeT=Math.max(state.shakeT,t); state.shakeAmp=Math.max(state.shakeAmp,amp); }
 
   // 레벨업 선택
-  function rollChoices(){ const r=XorShift32(state.seed ^ (state.lvl*0x9e3779b9)); const pool=[...ITEMS], out=[]; for(let i=0;i<3&&pool.length;i++){ const idx=(pool.length*r()|0); out.push(pool.splice(idx,1)[0]); } return out; }
+  function rollChoices(){
+    const r=XorShift32(state.seed ^ (state.lvl*0x9e3779b9));
+    const pool=ITEMS.filter(it=>canPick(it.id));   // ← 필터
+    const out=[];
+    for(let i=0;i<3 && pool.length;i++){
+      const idx=(pool.length*r()|0);
+      out.push(pool.splice(idx,1)[0]);
+    }
+    return out;
+  }
   function openLevelUp(){ state.paused=true; const wrap=$('#choices'); wrap.innerHTML=''; for(const it of rollChoices()){ const btn=document.createElement('button'); btn.textContent=it.name; btn.style.cssText='text-align:left;padding:10px;border-radius:10px;background:#1b2330;color:#e5ecf6;border:1px solid #31415a'; btn.onclick=()=>{ it.onPick&&it.onPick(); closeLevelUp(); state.resumeDelay=0.25; player.ifr=Math.max(player.ifr,0.25); }; wrap.appendChild(btn);} $('#levelup').style.display='flex'; }
   function closeLevelUp(){ $('#levelup').style.display='none'; state.paused=false; }
 
@@ -376,6 +386,27 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
     const newMag=Math.max(0, vMag+dv); e.vx=Math.cos(na)*newMag; e.vy=Math.sin(na)*newMag;
   }
 
+  function canPick(id){
+    // 상호배타: 한쪽을 찍으면 반대 금지
+    if(id==='lin+1' && state.tree.lockRadial) return false;
+    if(id==='rad+1' && state.tree.lockLinear) return false;
+    return true;
+  }
+  function applyMilestones(){
+    // 관통 Lv3 이정표
+    if(!state.tree.perkOverPen && weapon.pierceLv>=3){
+      state.tree.perkOverPen = true;
+      weapon.pierceLv += 1;          // 보너스 관통 +1
+    }
+    // 폭발 Lv2 이정표
+    if(!state.tree.perkBlastShield && weapon.explosiveLv>=2){
+      state.tree.perkBlastShield = true;
+      WPN.explosiveSelfDmgMul = 0.3; // 자기피해 완화
+    }
+  }
+
+
+  // devOption창 비밀번호 세팅
   async function sha256Hex(str){
     const enc = new TextEncoder().encode(str);
     const buf = await crypto.subtle.digest('SHA-256', enc);
@@ -499,7 +530,7 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
           // 폭발탄
           if(b.explosive){ explodeAt(b.x,b.y,b.explRadius,b.dmg); bullets.release(b); if(e.hp<=0){ killEnemy(e); } break; }
           // 관통 처리
-          if(b.pierce>0){ b.pierce--; b.dmg=Math.max(0, b.dmg*(b.dmgFall||0.75)); } else { bullets.release(b); }
+          if(b.pierce>0){ b.pierce--; b.dmg=Math.max(state.tree.perkOverPen? 1 : 0, b.dmg * (b.dmgFall||0.75)); } else { bullets.release(b); }
           if(e.hp<=0){ killEnemy(e); }
           break; } }
     });
@@ -555,7 +586,7 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   /* ====================== [bootstrap] ================= */
   function save(){ const payload={ best:Math.max(state.score, (load()?.best||0)), unlocks:load()?.unlocks||[], options:load()?.options||{}, lastSeed:state.seed }; localStorage.setItem('rbh_save', JSON.stringify(payload)); }
   function load(){ try{ return JSON.parse(localStorage.getItem('rbh_save')||'null'); }catch(e){ return null; } }
-  function resetRun(){ const seed=(load()?.lastSeed ?? (Date.now()|0)); state.seed=seed; state.r=XorShift32(seed); state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0; state.spawnCD=DIFF.spawnBaseCD; state.paused=false; state.resumeDelay=0; state.shakeT=0; state.shakeAmp=0; player.x=W/2; player.y=H/2; player.hp=player.maxHp=5; player.ifr=0; player.fireCD=0; player.fireRate=(weapon.explosiveLv>0?0.12*WPN.explosiveFireRateMul:0.12); player.speed=210; player.dmg=1; player.pierce=0; weapon.linearLv=0; weapon.radialLv=0; weapon.pierceLv=0; weapon.explosiveLv=0; bullets.reset(); enemies.reset(); drops.reset(); sparks.reset(); rings.reset(); state.spawnCD = DIFF.spawnBaseCD; state.time = 0; }
+  function resetRun(){ const seed=(load()?.lastSeed ?? (Date.now()|0)); state.seed=seed; state.r=XorShift32(seed); state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0; state.spawnCD=DIFF.spawnBaseCD; state.paused=false; state.resumeDelay=0; state.shakeT=0; state.shakeAmp=0; player.x=W/2; player.y=H/2; player.hp=player.maxHp=5; player.ifr=0; player.fireCD=0; player.fireRate=(weapon.explosiveLv>0?0.12*WPN.explosiveFireRateMul:0.12); player.speed=210; player.dmg=1; player.pierce=0; weapon.linearLv=0; weapon.radialLv=0; weapon.pierceLv=0; weapon.explosiveLv=0; bullets.reset(); enemies.reset(); drops.reset(); sparks.reset(); rings.reset(); state.spawnCD = DIFF.spawnBaseCD; state.time = 0; state.tree={ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false }; WPN.explosiveSelfDmgMul = 0.5; }
 
   document.getElementById('btnStart')?.addEventListener('click', ()=> resetRun());
   document.getElementById('btnExport')?.addEventListener('click', ()=>{ const s=localStorage.getItem('rbh_save')||'{}'; navigator.clipboard?.writeText(s); alert('저장 JSON을 클립보드에 복사했습니다.'); });
