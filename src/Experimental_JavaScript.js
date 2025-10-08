@@ -6,6 +6,72 @@
             [functions][systems][render][bootstrap]
    ===================================================== */
 (function(){
+
+  /* ===================== [dev_option] ===================== */
+  function toggleDev(on){
+  state.devOn = (on!==undefined)? on : !state.devOn;
+  const el = document.getElementById('dev');
+  if(el) el.style.display = state.devOn ? 'block' : 'none';
+  if(state.devOn) fillDev();
+  }
+  addEventListener('keydown', (e)=>{ if(e.code==='F1'){ e.preventDefault(); toggleDev(); }});
+  document.getElementById('devClose')?.addEventListener('click', ()=>toggleDev(false));
+
+  function fillDev(){
+    // 값 반영
+    const g=(id)=>document.getElementById(id);
+    g('p_hp').value     = player.hp;
+    g('p_maxhp').value  = player.maxHp;
+    g('p_dmg').value    = player.dmg;
+    g('p_rate').value   = player.fireRate.toFixed(2);
+
+    g('w_lin').value    = weapon.linearLv;
+    g('w_rad').value    = weapon.radialLv;
+    g('w_pierce').value = weapon.pierceLv;
+    g('w_expl').value   = weapon.explosiveLv;
+
+    g('d_maxE').value   = DIFF.maxEnemiesEnd;
+    g('d_cd_base').value= DIFF.spawnBaseCD;
+    g('d_cd_min').value = DIFF.spawnMinCD;
+    g('d_pack').value   = DIFF.packBase;
+    g('d_spd').value    = DIFF.enemyBaseSp;
+    g('d_hp').value     = DIFF.hpBase;
+  }
+
+  (function bindDev(){
+    const g=(id)=>document.getElementById(id);
+    if(!g('dev')) return; // 패널 미존재 시 스킵
+
+    // Player
+    g('p_heal').onclick = ()=>{ player.hp = player.maxHp; };
+    g('p_hp').onchange = (e)=>{ player.hp = Math.max(1, Math.min(player.maxHp, +e.target.value||player.hp)); };
+    g('p_maxhp').onchange = (e)=>{ player.maxHp = Math.max(1, +e.target.value||player.maxHp); player.hp = Math.min(player.hp, player.maxHp); };
+    g('p_dmg').onchange = (e)=>{ player.dmg = Math.max(1, +e.target.value||player.dmg); };
+    g('p_rate').onchange= (e)=>{ const v=Math.max(0.03, +e.target.value||player.fireRate); player.fireRate=v; };
+
+    // Weapon
+    g('w_lin').onchange   = (e)=>{ weapon.linearLv   = Math.max(0, +e.target.value|0); };
+    g('w_rad').onchange   = (e)=>{ weapon.radialLv   = Math.max(0, +e.target.value|0); };
+    g('w_pierce').onchange= (e)=>{ weapon.pierceLv   = Math.max(0, +e.target.value|0); };
+    g('w_expl').onchange  = (e)=>{ weapon.explosiveLv= Math.max(0, +e.target.value|0); player.fireRate = 0.12*(weapon.explosiveLv>0? WPN.explosiveFireRateMul:1); };
+
+    // Diff/Spawn
+    g('d_apply').onclick = ()=>{
+      DIFF.maxEnemiesEnd = Math.max(5, +g('d_maxE').value|0);
+      DIFF.spawnBaseCD   = Math.max(0.05, +g('d_cd_base').value||DIFF.spawnBaseCD);
+      DIFF.spawnMinCD    = Math.max(0.05, +g('d_cd_min').value||DIFF.spawnMinCD);
+      DIFF.packBase      = Math.max(1, +g('d_pack').value|0);
+      DIFF.enemyBaseSp   = Math.max(10, +g('d_spd').value|0);
+      DIFF.hpBase        = Math.max(1, +g('d_hp').value|0);
+      // 즉시 체감하도록 다음 스폰까지 대기시간 리셋
+      state.spawnCD = 0.1;
+    };
+    g('d_spawn').onclick = ()=>{ for(let i=0;i<packCountNow();i++){ if(enemies.free.length) spawnEnemy(); } };
+    g('d_xp').onclick    = ()=>{ state.xp = state.nextLvl-1; }; // 드랍 하나 주우면 레벨업
+
+    fillDev();
+  })();
+
   /* ===================== [config] ===================== */
   const W=960, H=540, FIXED_DT=1/60, TAU=Math.PI*2;
   const ENEMY_ACCEL=600, ENEMY_TURN=6.0;           // 회전·가속 제한
@@ -40,7 +106,7 @@
   cvs.addEventListener('mousemove',e=>{ const r=cvs.getBoundingClientRect(); Input.mx=e.clientX-r.left; Input.my=e.clientY-r.top; });
   const state={ seed:Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10,
                 alive:false, score:0, spawnCD:0, paused:false, resumeDelay:0,
-                shakeT:0, shakeAmp:0 };
+                shakeT:0, shakeAmp:0, devOn: false };
 
   /* ===================== [weapon] ===================== */
   const WPN={ spreadDegPerPellet:10, dmgFallPerPierce:0.75, explosiveRadiusBase:48, explosiveRadiusPerLv:10, explosiveSelfDmgMul:0.5, explosiveFireRateMul:1.25 };

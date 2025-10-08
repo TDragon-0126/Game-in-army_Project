@@ -11,6 +11,48 @@
     button{background:#1b2330;color:#e5ecf6;border:1px solid #31415a;border-radius:8px;padding:6px 10px}
   </style>
 </head>
+
+
+<!-- Dev Panel -->
+<div id="dev" style="position:fixed;right:8px;top:8px;display:none;z-index:20;
+  background:#0b1220;border:1px solid #334155;border-radius:12px;padding:10px;min-width:280px;color:#e5ecf6;font:12px system-ui">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <b>DEV</b><button id="devClose" style="background:#1b2330;color:#e5ecf6;border:1px solid #31415a;border-radius:6px;padding:2px 6px">닫기(F1)</button>
+  </div>
+  <div style="display:grid;gap:6px">
+    <!-- Player -->
+    <div><b>Player</b></div>
+    <label>HP / Max <input id="p_hp" type="number" min="1" max="99" style="width:56px"> /
+      <input id="p_maxhp" type="number" min="1" max="99" style="width:56px">
+      <button id="p_heal">풀회복</button></label>
+    <label>Damage <input id="p_dmg" type="number" min="1" max="50" style="width:60px"></label>
+    <label>FireRate(s) <input id="p_rate" type="number" step="0.01" min="0.03" max="1.0" style="width:70px"></label>
+
+    <!-- Weapon -->
+    <div><b>Weapon</b></div>
+    <label>Linear lanes <input id="w_lin" type="number" min="0" max="8" style="width:60px"></label>
+    <label>Radial pellets <input id="w_rad" type="number" min="0" max="8" style="width:60px"></label>
+    <label>Pierce Lv <input id="w_pierce" type="number" min="0" max="10" style="width:60px"></label>
+    <label>Explosive Lv <input id="w_expl" type="number" min="0" max="5" style="width:60px"></label>
+
+    <!-- Spawn/Diff -->
+    <div><b>Spawn/Diff</b></div>
+    <label>Max Enemies <input id="d_maxE" type="number" min="5" max="200" style="width:70px"></label>
+    <label>Spawn CD base <input id="d_cd_base" type="number" step="0.1" min="0.1" max="5" style="width:70px"></label>
+    <label>Spawn CD min <input id="d_cd_min" type="number" step="0.05" min="0.05" max="3" style="width:70px"></label>
+    <label>Pack base <input id="d_pack" type="number" min="1" max="10" style="width:60px"></label>
+    <label>Enemy base speed <input id="d_spd" type="number" min="10" max="400" style="width:70px"></label>
+    <label>Enemy base HP <input id="d_hp" type="number" min="1" max="50" style="width:70px"></label>
+
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button id="d_apply">Apply</button>
+      <button id="d_spawn">Spawn now</button>
+      <button id="d_xp">+XP</button>
+    </div>
+  </div>
+</div>
+
+
 <body>
   
   <div id="ui">

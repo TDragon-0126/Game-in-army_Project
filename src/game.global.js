@@ -8,9 +8,10 @@
 (function(){
   /* ===================== [config] ===================== */
   const W=960, H=540, FIXED_DT=1/60, TAU=Math.PI*2;
-  const ENEMY_ACCEL=600, ENEMY_TURN=6.0;        // 회전·가속 제한
-  const SEP_RANGE=24, SEP_K=1200;               // 적-적 분리 강도
-  const MAG_R=30, MAG_ACC=10000, MAG_MAX=5000;    // 드랍 마그넷
+  const ENEMY_ACCEL=600, ENEMY_TURN=6.0;           // 회전·가속 제한
+  const SEP_RANGE=24, SEP_K=1200;                  // 적-적 분리 강도
+  const MAG_R=30, MAG_ACC=10000, MAG_MAX=5000;     // 드랍 마그넷
+  const LINEAR_LANE_SPACING = 10;                  // 병렬 탄 간격(px)
 
   // 스폰·난이도(간단형)
   const DIFF={
@@ -104,22 +105,47 @@
 
   // 발사(무기 시스템)
   function fireWeapon(ax,ay){
-    const dirA=Math.atan2(ay,ax);
-    const linearCount=1+weapon.linearLv;
-    const radialCount=1+weapon.radialLv;
-    const totalShots=Math.max(linearCount, radialCount);
-    const stepRad=(WPN.spreadDegPerPellet*Math.PI/180);
-    for(let i=0;i<totalShots;i++){
-      let a=dirA; if(radialCount>1){ const center=(radialCount-1)/2; const off=(i-center)*stepRad; a=dirA+off; }
-      const sp=420, vx=Math.cos(a)*sp, vy=Math.sin(a)*sp;
-      bullets.spawn(b=>{
-        b.x=player.x; b.y=player.y; b.vx=vx; b.vy=vy;
-        b.life=1.1 - Math.min(0.5, weapon.explosiveLv*0.15);
-        b.team=0; b.r=3; b.dmg=player.dmg; b.pierce=player.pierce+weapon.pierceLv; b.dmgFall=WPN.dmgFallPerPierce;
-        b.explosive=(weapon.explosiveLv>0);
-        b.explRadius=WPN.explosiveRadiusBase + WPN.explosiveRadiusPerLv*Math.max(0,weapon.explosiveLv-1);
-      });
+    const dirA = Math.atan2(ay, ax);
+
+    // 탄수 계산
+    const linearCount = 1 + weapon.linearLv;   // 병렬 레인 수
+    const radialCount = 1 + weapon.radialLv;   // 방사 펠릿 수
+    const stepRad = (WPN.spreadDegPerPellet * Math.PI/180);
+
+    // 방향 벡터와 수직(노멀) 벡터
+    const dx = ax, dy = ay;
+    const nx = -dy, ny = dx; // 단위 노멀(이미 ax,ay가 단위라 수치 안정)
+
+    // 방사형 각도 생성 → 각 각도마다 병렬 레인 생성
+    const centerPellet = (radialCount-1)/2;
+    for(let p=0; p<radialCount; p++){
+      const offA = (radialCount>1) ? (p - centerPellet) * stepRad : 0;
+      const a = dirA + offA;
+      const vxDir = Math.cos(a), vyDir = Math.sin(a);
+
+      // 병렬 레인 오프셋(좌우 대칭)
+      const centerLane = (linearCount-1)/2;
+      for(let l=0; l<linearCount; l++){
+        const laneOff = (l - centerLane) * LINEAR_LANE_SPACING;
+        const sx = player.x + nx * laneOff;  // 시작점을 수직 방향으로 이동
+        const sy = player.y + ny * laneOff;
+
+        const sp = 420; // 탄속
+        bullets.spawn(b=>{
+          b.x = sx; b.y = sy;
+          b.vx = vxDir * sp; b.vy = vyDir * sp;
+          b.life = 1.1 - Math.min(0.5, weapon.explosiveLv*0.15);
+          b.team = 0; b.r = 3;
+          b.dmg = player.dmg;
+          b.pierce = player.pierce + weapon.pierceLv;
+          b.dmgFall = WPN.dmgFallPerPierce;
+          b.explosive = (weapon.explosiveLv>0);
+          b.explRadius = WPN.explosiveRadiusBase + WPN.explosiveRadiusPerLv*Math.max(0,weapon.explosiveLv-1);
+        });
+      }
     }
+
+    // 연사 간격
     player.fireCD = player.fireRate * (weapon.explosiveLv>0 ? WPN.explosiveFireRateMul : 1);
   }
 
