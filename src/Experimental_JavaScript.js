@@ -38,7 +38,7 @@
     g('d_hp').value     = DIFF.hpBase;
   }
 
-  (function bindDev(){
+  function bindDev(){
     const g=(id)=>document.getElementById(id);
     if(!g('dev')) return; // 패널 미존재 시 스킵
 
@@ -70,7 +70,7 @@
     g('d_xp').onclick    = ()=>{ state.xp = state.nextLvl-1; }; // 드랍 하나 주우면 레벨업
 
     fillDev();
-  })();
+  };
 
   /* ===================== [config] ===================== */
   const W=960, H=540, FIXED_DT=1/60, TAU=Math.PI*2;
@@ -379,6 +379,8 @@
 
   // 시작
   requestAnimationFrame(tick);
+  // Dev panel는 엔티티 초기화 이후에 호출
+  bindDev();
   // window debug
   window.Game={state,player,enemies,bullets,drops,save,load,resetRun,weapon};
 })();
