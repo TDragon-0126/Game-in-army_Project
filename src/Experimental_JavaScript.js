@@ -6,6 +6,70 @@
    ===================================================== */
 (function(){
 
+  // 디버그 용이므로 확인 후에는 바로 삭제할 것.// HUD DOM 보장
+function ensureDebugHUD(){
+  if(document.getElementById('hudDebug')) return;
+  const d=document.createElement('div');
+  d.id='hudDebug';
+  d.style.cssText='position:fixed;left:8px;top:8px;z-index:15;padding:8px 10px;border-radius:10px;background:rgba(8,11,20,.72);color:#e5ecf6;font:12px/1.4 system-ui;white-space:pre;display:none;border:1px solid #334155';
+  document.body.appendChild(d);
+}
+// 토글(F2)
+addEventListener('keydown',e=>{
+  if(e.code==='F2'){ e.preventDefault(); state.debugOn=!state.debugOn;
+    ensureDebugHUD();
+    const el=document.getElementById('hudDebug');
+    el.style.display = state.debugOn ? 'block' : 'none';
+  }
+});
+
+// 통계 수집
+function countActive(pool){ return pool.raw.length - pool.free.length; }
+function avgEnemyHp(){
+  let s=0,n=0; enemies.each(e=>{s+=e.hp; n++;}); return n? (s/n) : 0;
+}
+function updateDebugHUD(){
+  if(!state.debugOn) return;
+  const el=document.getElementById('hudDebug'); if(!el) return;
+
+  const mm = Math.floor(state.time/60), ss = Math.floor(state.time%60);
+  const activeE = countActive(enemies);
+  const maxE = maxEnemiesNow();
+  const bulletsN = countActive(bullets);
+
+  const spawnNow = Math.max(0, state.spawnCD).toFixed(2);
+  const spawnNext = spawnCooldownNow().toFixed(2);
+  const spNow = enemySpeedNow()|0;
+  const hpNow = enemyHpNow()|0;
+  const hpAvg = avgEnemyHp().toFixed(1);
+
+  // 풀 사용률
+  const pu = (p)=> (100*(1 - p.free.length/p.raw.length)).toFixed(0)+'%';
+  const eUse = pu(enemies), bUse = pu(bullets), dUse = pu(drops);
+
+  el.textContent =
+`Time ${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')} | FPS ${state.fps.toFixed(0)}
+Enemies ${activeE}/${maxE}  Bullets ${bulletsN}
+SpawnCD ${spawnNow}s  NextCD ${spawnNext}s
+Enemy Spd ${spNow}  HP now ${hpNow}  HP avg ${hpAvg}
+Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
+}
+function tick(now){
+  // FPS 측정(EMA)
+  const dtms = now - last; last = now;
+  const fpsSample = dtms>0 ? 1000/dtms : 60;
+  state.fps = state.fps*0.9 + fpsSample*0.1;
+
+  acc += Math.min(0.25, dtms/1000);
+  while(acc>=FIXED_DT){ update(FIXED_DT); acc-=FIXED_DT; }
+  render();
+  updateDebugHUD();     // ← 추가
+  requestAnimationFrame(tick);
+}
+ensureDebugHUD();        // 시작 시 DOM 보장
+
+  
+
   /* ===================== [dev_option] ===================== */
   async function toggleDev(on){
   const want = (on!==undefined) ? on : !state.devOn;
@@ -168,7 +232,7 @@
   cvs.addEventListener('mousemove',e=>{ const r=cvs.getBoundingClientRect(); Input.mx=e.clientX-r.left; Input.my=e.clientY-r.top; });
   const state={ seed:Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10,
                 alive:false, score:0, spawnCD:0, paused:false, resumeDelay:0,
-                shakeT:0, shakeAmp:0, devOn: false, devUnlocked:false, devHold:false };
+                shakeT:0, shakeAmp:0, devOn: false, devUnlocked:false, devHold:false, debugOn:false, fps:60 };
 
   /* ===================== [weapon] ===================== */
   const WPN={ spreadDegPerPellet:10, dmgFallPerPierce:0.75, explosiveRadiusBase:48, explosiveRadiusPerLv:10, explosiveSelfDmgMul:0.5, explosiveFireRateMul:1.25 };
