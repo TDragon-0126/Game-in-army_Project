@@ -116,14 +116,30 @@
   const DEV_PWD_PEPPER_SUFFIX = ':TDragon';        // HASH_HEX PEPPER_SUFFIX
 
   // 스폰·난이도(간단형)
-  const DIFF={
-    grace:3.0,
-    maxEnemiesStart:20, maxEnemiesEnd:60,
-    spawnBaseCD:1.4, spawnMinCD:0.6,
-    packBase:2, packPerMin:1, packMax:5,
-    enemyBaseSp:70, enemySpPerMin:12, enemySpMax:180,
-    hpBase:4, hpPerMin:0.6, hpMax:12
+  // [config] DIFF 교체
+  const DIFF = {
+    grace: 4.0,                 // 시작 유예
+    // 동시 적 수: 0→8분 선형 22→58
+    maxEnemiesStart: 22,
+    maxEnemiesEnd:   58,
+    // 스폰 주기: 0→8분 1.6s → 0.7s
+    spawnBaseCD: 1.6,
+    spawnMinCD:  0.7,
+    packBase:    2,             // 팩 시작 수
+    packPerMin:  1,             // 분당 +1 (상한 5)
+    packMax:     5,
+
+    // 속도: 0→8분 70→170
+    enemyBaseSp: 70,
+    enemySpPerMin: 12.5,
+    enemySpMax:  170,
+
+    // HP: 0→8분 4→10
+    hpBase: 4,
+    hpPerMin: 0.75,
+    hpMax:   10
   };
+
 
   /* ======================= [rng] ====================== */
   function XorShift32(seed){ let x=seed|0||123456789; return ()=>{ x^=x<<13; x^=x>>>17; x^=x<<5; return (x>>>0)/4294967296; }; }
@@ -198,6 +214,18 @@
   const $=(s)=>document.querySelector(s);
   function minutes(){ return Math.floor(state.time/60); }
   function clamp(v,a,b){ return v<a?a : v>b?b : v; }
+  function safeNorm(x,y){ const L=Math.hypot(x,y); return L? [x/L,y/L] : [0,0]; }
+  function maxEnemiesNow(){
+    const t = clamp(minutes()/8, 0, 1);
+    return Math.round(DIFF.maxEnemiesStart + (DIFF.maxEnemiesEnd - DIFF.maxEnemiesStart)*t);
+  }
+  function spawnCooldownNow(){
+    const t = clamp(minutes()/8, 0, 1);
+    return Math.max(DIFF.spawnMinCD, DIFF.spawnBaseCD - t*(DIFF.spawnBaseCD-DIFF.spawnMinCD));
+  }
+  function packCountNow(){ return Math.min(DIFF.packMax, DIFF.packBase + minutes()*DIFF.packPerMin); }
+  function enemySpeedNow(){ return Math.min(DIFF.enemySpMax, DIFF.enemyBaseSp + DIFF.enemySpPerMin*minutes()); }
+  function enemyHpNow(){ return Math.min(DIFF.hpMax, Math.round(DIFF.hpBase + DIFF.hpPerMin*minutes())); }
   function addShake(t=0.15, amp=6){ state.shakeT=Math.max(state.shakeT,t); state.shakeAmp=Math.max(state.shakeAmp,amp); }
 
   // 레벨업 선택
@@ -361,9 +389,9 @@
       if(e.hitTimer>0)  e.hitTimer  -= dt;
 
       const sp = enemySpeedNow() * e.slowMul;
-      const dx = player.x - e.x, dy = player.y - e.y, L = Math.hypot(dx,dy)||1;
-      // 웜업 동안 목표속도 60%로 조향
-      steer(e, dt, sp * (e.warm>0 ? 0.6 : 1.0), dx/L, dy/L);
+      const dx = player.x - e.x, dy = player.y - e.yconst 
+      const [ux,uy] = safeNorm(dx,dy);
+      steer(e, dt, enemySpeedNow()*(e.warm>0?0.6:1.0)*e.slowMul, ux, uy);
 
       e.x += e.vx*dt; e.y += e.vy*dt;
     });
