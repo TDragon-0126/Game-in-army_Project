@@ -15,9 +15,19 @@
   if(want){
     // 잠금 확인·검증(사용 중인 해시 검증 넣으세요)
     if(!state.devUnlocked){
+      const wait = devLockCheck();
+      if(wait>0){ alert(`잠금 중: ${Math.ceil(wait/1000)}초 후 다시 시도하세요.`); return; }
+
       const pwd = prompt('개발자 모드 비밀번호를 입력하세요.');
-      if(!pwd) return;
-      // ...해시 검증 통과 시:
+      if(pwd==null) return;
+
+      const cand = await sha256Hex(DEV_PWD_PEPPER_PREFIX + pwd + DEV_PWD_PEPPER_SUFFIX);
+      if(cand !== DEV_PWD_HASH_HEX){
+        const backoff = devLockFailBackoff();
+        alert('비밀번호가 올바르지 않습니다.');
+        return;
+      }
+      devLockReset();
       state.devUnlocked = true;
     }
     state.devOn = true;
