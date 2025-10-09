@@ -228,8 +228,8 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
 
   /* ======================= [items] ==================== */
   const ITEMS=[
-    {id:'lin+1', name:'직선 탄수 +1', onPick:()=>{ weapon.linearLv++; state.tree.lockRadial=true; applyMilestones(); }},
-    {id:'rad+1', name:'방사형 탄수 +1', onPick:()=>{ weapon.radialLv++; state.tree.lockLinear=true; applyMilestones(); }},
+    {id:'lin+1', name:'직선 탄수 +1', onPick:()=>{ weapon.linearLv++; applyMilestones(); }},
+    {id:'rad+1', name:'방사형 탄수 +1', onPick:()=>{ weapon.radialLv++; applyMilestones(); }},
     {id:'pierce+1', name:'관통 +1(감쇠)', onPick:()=>{ weapon.pierceLv++; applyMilestones(); }},
     {id:'explosive+1', name:'폭발탄 +1', onPick:()=>{ weapon.explosiveLv++; player.fireRate=0.12*WPN.explosiveFireRateMul; applyMilestones(); }},
   ];
@@ -388,8 +388,8 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
 
   function canPick(id){
     // 상호배타: 한쪽을 찍으면 반대 금지
-    if(id==='lin+1' && state.tree.lockRadial) return false;
-    if(id==='rad+1' && state.tree.lockLinear) return false;
+    if(id==='lin+1' && weapon.radialLv > 0) return false;
+    if(id==='rad+1' && weapon.linearLv > 0) return false;
     return true;
   }
   function applyMilestones(){
@@ -403,11 +403,6 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
       state.tree.perkBlastShield = true;
       WPN.explosiveSelfDmgMul = 0.3; // 자기피해 완화
     }
-  }
-  // dev패널에서 레벨을 직접 만졌을 때도 일관성 유지
-  function syncTreeLocks(){ 
-    if(weapon.linearLv>0) state.tree.lockRadial = true;
-    if(weapon.radialLv>0) state.tree.lockLinear = true;
   }
 
 
