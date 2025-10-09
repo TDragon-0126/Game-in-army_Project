@@ -221,7 +221,7 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   const state={ seed:Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10,
                 alive:false, score:0, spawnCD:0, paused:false, resumeDelay:0,
                 shakeT:0, shakeAmp:0, devOn: false, devUnlocked:false, devHold:false, debugOn:false, fps:60,
-                tree:{ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false }, firstHitSoft = true };
+                tree:{ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false }, firstHitSoft:true };
 
   /* ===================== [weapon] ===================== */
   const WPN={ spreadDegPerPellet:10, dmgFallPerPierce:0.75, explosiveRadiusBase:48, explosiveRadiusPerLv:10, explosiveSelfDmgMul:0.5, explosiveFireRateMul:1.25 };
