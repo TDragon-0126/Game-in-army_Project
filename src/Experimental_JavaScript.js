@@ -301,7 +301,7 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
     }
     return out;
   }
-  function openLevelUp(){ state.paused=true; const wrap=$('#choices'); wrap.innerHTML=''; for(const it of rollChoices()){ const btn=document.createElement('button'); btn.textContent=it.name; btn.style.cssText='text-align:left;padding:10px;border-radius:10px;background:#1b2330;color:#e5ecf6;border:1px solid #31415a'; btn.onclick =()=>{ if(!canPick(it.id)) return; it.onPick && it.onPick(); syncTreeLocks(); closeLevelUp(); state.resumeDelay = 0.25; player.ifr=Math.max(player.ifr,0.25); }; wrap.appendChild(btn);} $('#levelup').style.display='flex'; }
+  function openLevelUp(){ state.paused=true; const wrap=$('#choices'); wrap.innerHTML=''; for(const it of rollChoices()){ const btn=document.createElement('button'); btn.textContent=it.name; btn.style.cssText='text-align:left;padding:10px;border-radius:10px;background:#1b2330;color:#e5ecf6;border:1px solid #31415a'; btn.onclick =()=>{ if(!canPick(it.id)) return; it.onPick && it.onPick(); closeLevelUp(); state.resumeDelay = 0.25; player.ifr=Math.max(player.ifr,0.25); }; wrap.appendChild(btn);} $('#levelup').style.display='flex'; }
   function closeLevelUp(){ $('#levelup').style.display='none'; state.paused=false; }
 
   // 발사(무기 시스템)
