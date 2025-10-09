@@ -175,6 +175,7 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   const DEV_PWD_HASH_HEX = '89c0df90148e88f4fa0cf18444e087aa41cb7ecf6b6f220c75fa870f57f6f7ee';
   const DEV_PWD_PEPPER_PREFIX = 'MadeBy:';         // HASH_HEX PEPPER_PREFIX
   const DEV_PWD_PEPPER_SUFFIX = ':TDragon';        // HASH_HEX PEPPER_SUFFIX
+  const SCRATCH = { a:[], b:[] };
 
   // 스폰·난이도(간단형)
   // [config] DIFF 교체
@@ -273,6 +274,19 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   const rings =makePool(()=>({alive:false,x:0,y:0,r:0,life:0,max:18}),200);
 
   /* ===================== [functions] =================== */
+
+  function prewarmOnce(){
+    // 캔버스 경로·폰트·stroke/arc 예열
+    ctx.save(); ctx.translate(0.5,0.5); ctx.globalAlpha=0.9;
+    ctx.beginPath(); ctx.arc(0,0,4,0,TAU); ctx.fillStyle='#ffe08a'; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.arc(0,0,6,0,TAU); ctx.stroke();
+    ctx.globalAlpha=1; ctx.restore();
+
+    // 쿼드트리 경로 예열
+    const tmp = SCRATCH.a; tmp.length=0; qt.clear(); qt.query({x:0,y:0,w:1,h:1}, tmp); tmp.length=0;
+  }
+
 
   const $=(s)=>document.querySelector(s);
   function minutes(){ return Math.floor(state.time/60); }
@@ -494,8 +508,8 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
 
   // ---- Soft separation(속도 임펄스) ----
   enemies.each(e=>{
-    const cand=[]; qt.query({x:e.x-SEP_RANGE,y:e.y-SEP_RANGE,w:SEP_RANGE*2,h:SEP_RANGE*2}, cand);
-    for(const n of cand){
+    const near = SCRATCH.b; near.length = 0; qt.query({x:e.x-SEP_RANGE,y:e.y-SEP_RANGE,w:SEP_RANGE*2,h:SEP_RANGE*2}, near);
+    for(const n of near){
       if(n===e) continue;
       const dx=e.x-n.x, dy=e.y-n.y, dist=Math.hypot(dx,dy);
       const minDist=(e.r+n.r)-2;
@@ -522,11 +536,12 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   function collisionSystem(){
     // bullets vs enemies (쿼드트리 재사용)
     qt.clear(); enemies.each(e=>qt.insert(e));
-    bullets.each(b=>{ if(b.team!==0) return; const cand=[]; qt.query({x:b.x-24,y:b.y-24,w:48,h:48}, cand); for(const e of cand){ const dx=e.x-b.x, dy=e.y-b.y; const rr=e.r+b.r; if(dx*dx+dy*dy<=rr*rr){
+    bullets.each(b=>{ if(b.team!==0) return; const cand = SCRATCH.a; cand.length = 0; qt.query({x:b.x-24,y:b.y-24,w:48,h:48}, cand); for(const e of cand){ const dx=e.x-b.x, dy=e.y-b.y; const rr=e.r+b.r; if(dx*dx+dy*dy<=rr*rr){
           // 히트
           e.hp -= b.dmg; e.slowMul=0.8; e.slowTimer=0.25; e.hitTimer=0.08;
           // 이펙트
-          for(let k=0;k<6;k++){ sparks.spawn(p=>{ const a=Math.random()*TAU, sp=60+Math.random()*120; p.x=e.x; p.y=e.y; p.vx=Math.cos(a)*sp; p.vy=Math.sin(a)*sp; p.r=1+Math.random()*1.5; p.life=0.18; }); }
+          const r = state.r;                   // resetRun에서 XorShift32로 설정됨
+          for(let k=0;k<6;k++){ const a = r()*TAU, sp = 60 + r()*120; sparks.spawn(p=>{ p.x=e.x; p.y=e.y; p.vx=Math.cos(a)*sp; p.vy=Math.sin(a)*sp; p.r=1 + r()*1.5; p.life=0.18; }); }          
           addShake(0.05,3);
           // 폭발탄
           if(b.explosive){ explodeAt(b.x,b.y,b.explRadius,b.dmg); bullets.release(b); if(e.hp<=0){ killEnemy(e); } break; }
@@ -587,7 +602,7 @@ Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
   /* ====================== [bootstrap] ================= */
   function save(){ const payload={ best:Math.max(state.score, (load()?.best||0)), unlocks:load()?.unlocks||[], options:load()?.options||{}, lastSeed:state.seed }; localStorage.setItem('rbh_save', JSON.stringify(payload)); }
   function load(){ try{ return JSON.parse(localStorage.getItem('rbh_save')||'null'); }catch(e){ return null; } }
-  function resetRun(){ const seed=(load()?.lastSeed ?? (Date.now()|0)); state.seed=seed; state.r=XorShift32(seed); state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0; state.spawnCD=DIFF.spawnBaseCD; state.paused=false; state.resumeDelay=0; state.shakeT=0; state.shakeAmp=0; player.x=W/2; player.y=H/2; player.hp=player.maxHp=5; player.ifr=0; player.fireCD=0; player.fireRate=(weapon.explosiveLv>0?0.12*WPN.explosiveFireRateMul:0.12); player.speed=210; player.dmg=1; player.pierce=0; weapon.linearLv=0; weapon.radialLv=0; weapon.pierceLv=0; weapon.explosiveLv=0; bullets.reset(); enemies.reset(); drops.reset(); sparks.reset(); rings.reset(); state.spawnCD = DIFF.spawnBaseCD; state.time = 0; state.tree={ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false }; WPN.explosiveSelfDmgMul = 0.5; }
+  function resetRun(){ const seed=(load()?.lastSeed ?? (Date.now()|0)); state.seed=seed; state.r=XorShift32(seed); state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0; state.spawnCD=DIFF.spawnBaseCD; state.paused=false; state.resumeDelay=0; state.shakeT=0; state.shakeAmp=0; player.x=W/2; player.y=H/2; player.hp=player.maxHp=5; player.ifr=0; player.fireCD=0; player.fireRate=(weapon.explosiveLv>0?0.12*WPN.explosiveFireRateMul:0.12); player.speed=210; player.dmg=1; player.pierce=0; weapon.linearLv=0; weapon.radialLv=0; weapon.pierceLv=0; weapon.explosiveLv=0; bullets.reset(); enemies.reset(); drops.reset(); sparks.reset(); rings.reset(); state.spawnCD = DIFF.spawnBaseCD; state.time = 0; state.tree={ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false }; WPN.explosiveSelfDmgMul = 0.5; prewarmOnce(); }
 
   document.getElementById('btnStart')?.addEventListener('click', ()=> resetRun());
   document.getElementById('btnExport')?.addEventListener('click', ()=>{ const s=localStorage.getItem('rbh_save')||'{}'; navigator.clipboard?.writeText(s); alert('저장 JSON을 클립보드에 복사했습니다.'); });
