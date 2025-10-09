@@ -6,6 +6,57 @@
    ===================================================== */
 (function(){
 
+  // 디버그 용이므로 확인 후에는 바로 삭제할 것.// HUD DOM 보장
+function ensureDebugHUD(){
+  if(document.getElementById('hudDebug')) return;
+  const d=document.createElement('div');
+  d.id='hudDebug';
+  d.style.cssText='position:fixed;left:8px;top:8px;z-index:15;padding:8px 10px;border-radius:10px;background:rgba(8,11,20,.72);color:#e5ecf6;font:12px/1.4 system-ui;white-space:pre;display:none;border:1px solid #334155';
+  document.body.appendChild(d);
+}
+// 토글(F2)
+addEventListener('keydown',e=>{
+  if(e.code==='F2'){ e.preventDefault(); state.debugOn=!state.debugOn;
+    ensureDebugHUD();
+    const el=document.getElementById('hudDebug');
+    el.style.display = state.debugOn ? 'block' : 'none';
+  }
+});
+
+// 통계 수집
+function countActive(pool){ return pool.raw.length - pool.free.length; }
+function avgEnemyHp(){
+  let s=0,n=0; enemies.each(e=>{s+=e.hp; n++;}); return n? (s/n) : 0;
+}
+function updateDebugHUD(){
+  if(!state.debugOn) return;
+  const el=document.getElementById('hudDebug'); if(!el) return;
+
+  const mm = Math.floor(state.time/60), ss = Math.floor(state.time%60);
+  const activeE = countActive(enemies);
+  const maxE = maxEnemiesNow();
+  const bulletsN = countActive(bullets);
+
+  const spawnNow = Math.max(0, state.spawnCD).toFixed(2);
+  const spawnNext = spawnCooldownNow().toFixed(2);
+  const spNow = enemySpeedNow()|0;
+  const hpNow = enemyHpNow()|0;
+  const hpAvg = avgEnemyHp().toFixed(1);
+
+  // 풀 사용률
+  const pu = (p)=> (100*(1 - p.free.length/p.raw.length)).toFixed(0)+'%';
+  const eUse = pu(enemies), bUse = pu(bullets), dUse = pu(drops);
+
+  el.textContent =
+`Time ${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')} | FPS ${state.fps.toFixed(0)}
+Enemies ${activeE}/${maxE}  Bullets ${bulletsN}
+SpawnCD ${spawnNow}s  NextCD ${spawnNext}s
+Enemy Spd ${spNow}  HP now ${hpNow}  HP avg ${hpAvg}
+Pool Use  E:${eUse}  B:${bUse}  D:${dUse}`;
+}
+
+  
+
   /* ===================== [dev_option] ===================== */
   async function toggleDev(on){
   const want = (on!==undefined) ? on : !state.devOn;
@@ -126,14 +177,30 @@
   const DEV_PWD_PEPPER_SUFFIX = ':TDragon';        // HASH_HEX PEPPER_SUFFIX
 
   // 스폰·난이도(간단형)
-  const DIFF={
-    grace:3.0,
-    maxEnemiesStart:20, maxEnemiesEnd:60,
-    spawnBaseCD:1.4, spawnMinCD:0.6,
-    packBase:2, packPerMin:1, packMax:5,
-    enemyBaseSp:70, enemySpPerMin:12, enemySpMax:180,
-    hpBase:4, hpPerMin:0.6, hpMax:12
+  // [config] DIFF 교체
+  const DIFF = {
+    grace: 4.0,                 // 시작 유예
+    // 동시 적 수: 0→8분 선형 22→58
+    maxEnemiesStart: 22,
+    maxEnemiesEnd:   58,
+    // 스폰 주기: 0→8분 1.6s → 0.7s
+    spawnBaseCD: 1.6,
+    spawnMinCD:  0.7,
+    packBase:    2,             // 팩 시작 수
+    packPerMin:  1,             // 분당 +1 (상한 5)
+    packMax:     5,
+
+    // 속도: 0→8분 70→170
+    enemyBaseSp: 70,
+    enemySpPerMin: 12.5,
+    enemySpMax:  170,
+
+    // HP: 0→8분 4→10
+    hpBase: 4,
+    hpPerMin: 0.75,
+    hpMax:   10
   };
+
 
   /* ======================= [rng] ====================== */
   function XorShift32(seed){ let x=seed|0||123456789; return ()=>{ x^=x<<13; x^=x>>>17; x^=x<<5; return (x>>>0)/4294967296; }; }
@@ -152,7 +219,8 @@
   cvs.addEventListener('mousemove',e=>{ const r=cvs.getBoundingClientRect(); Input.mx=e.clientX-r.left; Input.my=e.clientY-r.top; });
   const state={ seed:Date.now()|0, r:null, time:0, wave:1, xp:0, lvl:1, nextLvl:10,
                 alive:false, score:0, spawnCD:0, paused:false, resumeDelay:0,
-                shakeT:0, shakeAmp:0, devOn: false, devUnlocked:false, devHold:false };
+                shakeT:0, shakeAmp:0, devOn: false, devUnlocked:false, devHold:false, debugOn:false, fps:60,
+                tree:{ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false } };
 
   /* ===================== [weapon] ===================== */
   const WPN={ spreadDegPerPellet:10, dmgFallPerPierce:0.75, explosiveRadiusBase:48, explosiveRadiusPerLv:10, explosiveSelfDmgMul:0.5, explosiveFireRateMul:1.25 };
@@ -160,10 +228,10 @@
 
   /* ======================= [items] ==================== */
   const ITEMS=[
-    {id:'lin+1', name:'직선 탄수 +1', onPick:()=>{ weapon.linearLv++; }},
-    {id:'rad+1', name:'방사형 탄수 +1', onPick:()=>{ weapon.radialLv++; }},
-    {id:'pierce+1', name:'관통 +1(감쇠)', onPick:()=>{ weapon.pierceLv++; }},
-    {id:'explosive+1', name:'폭발탄 +1', onPick:()=>{ weapon.explosiveLv++; player.fireRate=0.12*WPN.explosiveFireRateMul; }}
+    {id:'lin+1', name:'직선 탄수 +1', onPick:()=>{ weapon.linearLv++; applyMilestones(); }},
+    {id:'rad+1', name:'방사형 탄수 +1', onPick:()=>{ weapon.radialLv++; applyMilestones(); }},
+    {id:'pierce+1', name:'관통 +1(감쇠)', onPick:()=>{ weapon.pierceLv++; applyMilestones(); }},
+    {id:'explosive+1', name:'폭발탄 +1', onPick:()=>{ weapon.explosiveLv++; player.fireRate=0.12*WPN.explosiveFireRateMul; applyMilestones(); }},
   ];
 
   /* ======================= [pool] ===================== */
@@ -205,14 +273,36 @@
   const rings =makePool(()=>({alive:false,x:0,y:0,r:0,life:0,max:18}),200);
 
   /* ===================== [functions] =================== */
+
   const $=(s)=>document.querySelector(s);
   function minutes(){ return Math.floor(state.time/60); }
   function clamp(v,a,b){ return v<a?a : v>b?b : v; }
+  function safeNorm(x,y){ const L=Math.hypot(x,y); return L? [x/L,y/L] : [0,0]; }
+  function maxEnemiesNow(){
+    const t = clamp(minutes()/8, 0, 1);
+    return Math.round(DIFF.maxEnemiesStart + (DIFF.maxEnemiesEnd - DIFF.maxEnemiesStart)*t);
+  }
+  function spawnCooldownNow(){
+    const t = clamp(minutes()/8, 0, 1);
+    return Math.max(DIFF.spawnMinCD, DIFF.spawnBaseCD - t*(DIFF.spawnBaseCD-DIFF.spawnMinCD));
+  }
+  function packCountNow(){ return Math.min(DIFF.packMax, DIFF.packBase + minutes()*DIFF.packPerMin); }
+  function enemySpeedNow(){ return Math.min(DIFF.enemySpMax, DIFF.enemyBaseSp + DIFF.enemySpPerMin*minutes()); }
+  function enemyHpNow(){ return Math.min(DIFF.hpMax, Math.round(DIFF.hpBase + DIFF.hpPerMin*minutes())); }
   function addShake(t=0.15, amp=6){ state.shakeT=Math.max(state.shakeT,t); state.shakeAmp=Math.max(state.shakeAmp,amp); }
 
   // 레벨업 선택
-  function rollChoices(){ const r=XorShift32(state.seed ^ (state.lvl*0x9e3779b9)); const pool=[...ITEMS], out=[]; for(let i=0;i<3&&pool.length;i++){ const idx=(pool.length*r()|0); out.push(pool.splice(idx,1)[0]); } return out; }
-  function openLevelUp(){ state.paused=true; const wrap=$('#choices'); wrap.innerHTML=''; for(const it of rollChoices()){ const btn=document.createElement('button'); btn.textContent=it.name; btn.style.cssText='text-align:left;padding:10px;border-radius:10px;background:#1b2330;color:#e5ecf6;border:1px solid #31415a'; btn.onclick=()=>{ it.onPick&&it.onPick(); closeLevelUp(); state.resumeDelay=0.25; player.ifr=Math.max(player.ifr,0.25); }; wrap.appendChild(btn);} $('#levelup').style.display='flex'; }
+  function rollChoices(){
+    const r=XorShift32(state.seed ^ (state.lvl*0x9e3779b9));
+    const pool=ITEMS.filter(it=>canPick(it.id));   // ← 필터
+    const out=[];
+    for(let i=0;i<3 && pool.length;i++){
+      const idx=(pool.length*r()|0);
+      out.push(pool.splice(idx,1)[0]);
+    }
+    return out;
+  }
+  function openLevelUp(){ state.paused=true; const wrap=$('#choices'); wrap.innerHTML=''; for(const it of rollChoices()){ const btn=document.createElement('button'); btn.textContent=it.name; btn.style.cssText='text-align:left;padding:10px;border-radius:10px;background:#1b2330;color:#e5ecf6;border:1px solid #31415a'; btn.onclick =()=>{ if(!canPick(it.id)) return; it.onPick && it.onPick(); closeLevelUp(); state.resumeDelay = 0.25; player.ifr=Math.max(player.ifr,0.25); }; wrap.appendChild(btn);} $('#levelup').style.display='flex'; }
   function closeLevelUp(){ $('#levelup').style.display='none'; state.paused=false; }
 
   // 발사(무기 시스템)
@@ -297,6 +387,27 @@
     const newMag=Math.max(0, vMag+dv); e.vx=Math.cos(na)*newMag; e.vy=Math.sin(na)*newMag;
   }
 
+  function canPick(id){
+    // 상호배타: 한쪽을 찍으면 반대 금지
+    if(id==='lin+1' && weapon.radialLv > 0) return false;
+    if(id==='rad+1' && weapon.linearLv > 0) return false;
+    return true;
+  }
+  function applyMilestones(){
+    // 관통 Lv3 이정표
+    if(!state.tree.perkOverPen && weapon.pierceLv>=3){
+      state.tree.perkOverPen = true;
+      weapon.pierceLv += 1;          // 보너스 관통 +1
+    }
+    // 폭발 Lv2 이정표
+    if(!state.tree.perkBlastShield && weapon.explosiveLv>=2){
+      state.tree.perkBlastShield = true;
+      WPN.explosiveSelfDmgMul = 0.3; // 자기피해 완화
+    }
+  }
+
+
+  // devOption창 비밀번호 세팅
   async function sha256Hex(str){
     const enc = new TextEncoder().encode(str);
     const buf = await crypto.subtle.digest('SHA-256', enc);
@@ -355,51 +466,57 @@
 
   /* -------------------- [enemy] ----------------------- */
   function enemySystem(dt){
-    // Spawn
-    state.spawnCD -= dt;
-    const activeEnemies = enemies.raw.length - enemies.free.length;
-    if(state.time>DIFF.grace && state.spawnCD<=0 && activeEnemies < maxEnemiesNow()){
-      const pack=packCountNow(); for(let i=0;i<pack;i++){ if(!enemies.free.length) break; spawnEnemy(); }
-      state.spawnCD = spawnCooldownNow();
-    }
-    // Move
-    qt.clear(); enemies.each(e=>qt.insert(e));
-    enemies.each(e=>{
-      e.t += dt;
-      if(e.warm>0) e.warm = Math.max(0, e.warm - dt);
-      if(e.slowTimer>0){ e.slowTimer -= dt; if(e.slowTimer<=0) e.slowMul=1; }
-      if(e.hitTimer>0)  e.hitTimer  -= dt;
-
-      const sp = enemySpeedNow() * e.slowMul;
-      const dx = player.x - e.x, dy = player.y - e.y, L = Math.hypot(dx,dy)||1;
-      // 웜업 동안 목표속도 60%로 조향
-      steer(e, dt, sp * (e.warm>0 ? 0.6 : 1.0), dx/L, dy/L);
-
-      e.x += e.vx*dt; e.y += e.vy*dt;
-    });
-    // Soft separation (속도 임펄스)
-    enemies.each(e=>{
-      const cand=[]; qt.query({x:e.x-SEP_RANGE,y:e.y-SEP_RANGE,w:SEP_RANGE*2,h:SEP_RANGE*2}, cand);
-      for(const n of cand){
-        if(n===e) continue;
-        const dx=e.x-n.x, dy=e.y-n.y, dist=Math.hypot(dx,dy);
-        const minDist=(e.r+n.r)-2;
-        if(dist>0 && dist<minDist){
-          const nx=dx/dist, ny=dy/dist;
-          // 웜업 중이면 분리 강도 50%
-          const k = (e.warm>0 || n.warm>0) ? 0.5 : 1.0;
-          const acc = Math.min(SEP_K*(minDist-dist)*k, SEP_MAX_IMP/Math.max(1e-6,dt));
-          e.vx += nx * acc * dt; e.vy += ny * acc * dt;
-          n.vx -= nx * acc * dt; n.vy -= ny * acc * dt;
-        }
-      }
-    });
-    enemies.each(e=>{
-      const spCap = enemySpeedNow()*e.slowMul*(e.warm>0 ? 0.6 : 1.0);
-      const vL = Math.hypot(e.vx,e.vy);
-      if(vL > spCap){ e.vx = e.vx/vL * spCap; e.vy = e.vy/vL * spCap; }
-    });
+  // ---- Spawn ----
+  state.spawnCD -= dt;
+  const active = enemies.raw.length - enemies.free.length;
+  if(state.time>DIFF.grace && state.spawnCD<=0 && active < maxEnemiesNow()){
+    const pack = packCountNow();
+    for(let i=0;i<pack;i++){ if(!enemies.free.length) break; spawnEnemy(); }
+    state.spawnCD = spawnCooldownNow();
   }
+
+  // ---- Move (조향→이동) ----
+  qt.clear(); enemies.each(e=>qt.insert(e));
+  enemies.each(e=>{
+    e.t += dt;
+    if(e.warm>0) e.warm = Math.max(0, e.warm - dt);
+    if(e.slowTimer>0){ e.slowTimer-=dt; if(e.slowTimer<=0) e.slowMul=1; }
+    if(e.hitTimer>0)  e.hitTimer -= dt;
+
+    const dx = player.x - e.x, dy = player.y - e.y;
+    const L  = Math.hypot(dx,dy) || 1;
+    const ux = dx/L, uy = dy/L;
+
+    const sp = enemySpeedNow() * e.slowMul * (e.warm>0 ? 0.6 : 1.0); // 웜업=60%
+    steer(e, dt, sp, ux, uy);
+    e.x += e.vx*dt; e.y += e.vy*dt;
+  });
+
+  // ---- Soft separation(속도 임펄스) ----
+  enemies.each(e=>{
+    const cand=[]; qt.query({x:e.x-SEP_RANGE,y:e.y-SEP_RANGE,w:SEP_RANGE*2,h:SEP_RANGE*2}, cand);
+    for(const n of cand){
+      if(n===e) continue;
+      const dx=e.x-n.x, dy=e.y-n.y, dist=Math.hypot(dx,dy);
+      const minDist=(e.r+n.r)-2;
+      if(dist>0 && dist<minDist){
+        const nx=dx/dist, ny=dy/dist;
+        const k = (e.warm>0 || n.warm>0) ? 0.5 : 1.0;
+        const acc = Math.min(SEP_K*(minDist-dist)*k, SEP_MAX_IMP/Math.max(1e-6,dt));
+        e.vx += nx*acc*dt; e.vy += ny*acc*dt;
+        n.vx -= nx*acc*dt; n.vy -= ny*acc*dt;
+      }
+    }
+  });
+
+  // ---- 최종 속도 캡(분리 반영 후) ----
+  enemies.each(e=>{
+    const cap = enemySpeedNow() * e.slowMul * (e.warm>0 ? 0.6 : 1.0);
+    const vL  = Math.hypot(e.vx,e.vy);
+    if(vL > cap){ e.vx = e.vx/vL * cap; e.vy = e.vy/vL * cap; }
+  });
+}
+
 
   /* -------------------- [collision] ------------------- */
   function collisionSystem(){
@@ -414,7 +531,7 @@
           // 폭발탄
           if(b.explosive){ explodeAt(b.x,b.y,b.explRadius,b.dmg); bullets.release(b); if(e.hp<=0){ killEnemy(e); } break; }
           // 관통 처리
-          if(b.pierce>0){ b.pierce--; b.dmg=Math.max(0, b.dmg*(b.dmgFall||0.75)); } else { bullets.release(b); }
+          if(b.pierce>0){ b.pierce--; b.dmg=Math.max(state.tree.perkOverPen? 1 : 0, b.dmg * (b.dmgFall||0.75)); } else { bullets.release(b); }
           if(e.hp<=0){ killEnemy(e); }
           break; } }
     });
@@ -470,14 +587,14 @@
   /* ====================== [bootstrap] ================= */
   function save(){ const payload={ best:Math.max(state.score, (load()?.best||0)), unlocks:load()?.unlocks||[], options:load()?.options||{}, lastSeed:state.seed }; localStorage.setItem('rbh_save', JSON.stringify(payload)); }
   function load(){ try{ return JSON.parse(localStorage.getItem('rbh_save')||'null'); }catch(e){ return null; } }
-  function resetRun(){ const seed=(load()?.lastSeed ?? (Date.now()|0)); state.seed=seed; state.r=XorShift32(seed); state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0; state.spawnCD=DIFF.spawnBaseCD; state.paused=false; state.resumeDelay=0; state.shakeT=0; state.shakeAmp=0; player.x=W/2; player.y=H/2; player.hp=player.maxHp=5; player.ifr=0; player.fireCD=0; player.fireRate=(weapon.explosiveLv>0?0.12*WPN.explosiveFireRateMul:0.12); player.speed=210; player.dmg=1; player.pierce=0; weapon.linearLv=0; weapon.radialLv=0; weapon.pierceLv=0; weapon.explosiveLv=0; bullets.reset(); enemies.reset(); drops.reset(); sparks.reset(); rings.reset(); }
+  function resetRun(){ const seed=(load()?.lastSeed ?? (Date.now()|0)); state.seed=seed; state.r=XorShift32(seed); state.time=0; state.wave=1; state.xp=0; state.lvl=1; state.nextLvl=10; state.alive=true; state.score=0; state.spawnCD=DIFF.spawnBaseCD; state.paused=false; state.resumeDelay=0; state.shakeT=0; state.shakeAmp=0; player.x=W/2; player.y=H/2; player.hp=player.maxHp=5; player.ifr=0; player.fireCD=0; player.fireRate=(weapon.explosiveLv>0?0.12*WPN.explosiveFireRateMul:0.12); player.speed=210; player.dmg=1; player.pierce=0; weapon.linearLv=0; weapon.radialLv=0; weapon.pierceLv=0; weapon.explosiveLv=0; bullets.reset(); enemies.reset(); drops.reset(); sparks.reset(); rings.reset(); state.spawnCD = DIFF.spawnBaseCD; state.time = 0; state.tree={ lockLinear:false, lockRadial:false, perkOverPen:false, perkBlastShield:false }; WPN.explosiveSelfDmgMul = 0.5; }
 
   document.getElementById('btnStart')?.addEventListener('click', ()=> resetRun());
   document.getElementById('btnExport')?.addEventListener('click', ()=>{ const s=localStorage.getItem('rbh_save')||'{}'; navigator.clipboard?.writeText(s); alert('저장 JSON을 클립보드에 복사했습니다.'); });
   document.getElementById('btnImport')?.addEventListener('click', ()=>{ const s=prompt('저장 JSON 붙여넣기'); if(s){ try{ localStorage.setItem('rbh_save', s); alert('불러오기 완료'); }catch(e){ alert('잘못된 JSON'); } } });
 
   let acc=0, last=performance.now();
-  function tick(now){ acc+=Math.min(0.25,(now-last)/1000); last=now; while(acc>=FIXED_DT){ update(FIXED_DT); acc-=FIXED_DT; } render(); requestAnimationFrame(tick); }
+  function tick(now){ acc+=Math.min(0.25,(now-last)/1000); last=now; while(acc>=FIXED_DT){ update(FIXED_DT); acc-=FIXED_DT; } render(); updateDebugHUD(); requestAnimationFrame(tick); }
 
   // 시작
   requestAnimationFrame(tick);
